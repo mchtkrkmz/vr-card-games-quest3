@@ -1,0 +1,23 @@
+{
+  "name": "VR 52 & 101 Okey Kıraathane",
+  "short_name": "VR Kıraathane",
+  "description": "Meta Quest 3 & WebXR Otantik Türk Kıraathanesi: Batak, Pişti, Klasik Okey ve 101 Okey",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#090c13",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "./assets/kiraathane_rug.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "./assets/kiraathane_rug.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ],
+  "categories": ["games", "entertainment", "virtual-reality"]
+}
