@@ -169,29 +169,44 @@ class CardTextureGenerator {
     ctx.strokeRect(6, 6, width - 12, height - 12);
 
     const suit = SUITS[card.suit];
-    const isRed = suit.isRed;
-    const suitColor = isRed ? '#dc2626' : '#111827';
+    // High-contrast 4-color suit scheme for instant VR recognition
+    const suitColors = {
+      S: '#0f172a', // Jet Black
+      H: '#dc2626', // Crimson Red
+      D: '#ea580c', // Amber Orange
+      C: '#16a34a'  // Forest Green
+    };
+    const suitColor = suitColors[card.suit] || (suit.isRed ? '#dc2626' : '#0f172a');
 
-    // Draw Corner Indices (Top-Left & Bottom-Right)
+    // Draw Corner Indices (Top-Left & Bottom-Right) with high-contrast backing pill
     const drawIndex = (x, y, angle) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(angle);
-      
+
+      // Dedicated crisp white backing pill for maximum legibility in VR
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(-34, -10, 68, 126, 12);
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.stroke();
+
       ctx.fillStyle = suitColor;
-      ctx.font = 'bold 48px "Cinzel", "Georgia", "Times New Roman", serif';
+      ctx.font = '900 62px "Outfit", "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(card.rank, 0, 0);
 
-      ctx.font = '38px sans-serif';
-      ctx.fillText(suit.symbol, 0, 52);
+      ctx.font = '50px sans-serif';
+      ctx.fillText(suit.symbol, 0, 60);
 
       ctx.restore();
     };
 
-    drawIndex(44, 28, 0);
-    drawIndex(width - 44, height - 28, Math.PI);
+    drawIndex(46, 26, 0);
+    drawIndex(width - 46, height - 26, Math.PI);
 
     // Center Illustration or Pips
     const cx = width / 2;
@@ -338,10 +353,10 @@ export const cardTexGen = new CardTextureGenerator();
 
 // 3D Physical Card Mesh Generator
 export function createCard3DMesh(cardData, isRecommended = false) {
-  // Realistic playing card dimensions: ~6.3cm x ~8.8cm (Three.js units: 0.082m x 0.118m x 0.001m)
-  const width = 0.082;
-  const height = 0.118;
-  const depth = 0.0012;
+  // Enhanced playing card dimensions for VR headset legibility: ~8.8cm x ~12.6cm
+  const width = 0.088;
+  const height = 0.126;
+  const depth = 0.0014;
 
   // Box geometry for card with bevel thickness
   const geometry = new THREE.BoxGeometry(width, height, depth);

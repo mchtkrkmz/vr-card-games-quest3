@@ -107,6 +107,15 @@ export class VRCardScene {
 
     // State
     this.activeGameType = 'BATAK';
+    this.tablePlayers = [];
+    this.okeyQuickSortGroup = null;
+    this.cardQuickSortGroup = null;
+    this.onSortAiCallback = null;
+    this.onSortRunsCallback = null;
+    this.onSortPairsCallback = null;
+    this.onSortCardsCallback = null;
+    this.onDrawDiscardCallback = null;
+    this.onAiAdviceClickCallback = null;
     this.onCardSelectedCallback = null;
     this.onTileSelectedCallback = null;
     this.onCenterStackClickCallback = null;
@@ -515,6 +524,7 @@ export class VRCardScene {
   }
 
   updateTableAvatars(players = []) {
+    this.tablePlayers = players;
     if (this.opponentAvatars && this.opponentAvatars.length > 0) {
       this.opponentAvatars.forEach(av => {
         this.scene.remove(av);
@@ -842,6 +852,106 @@ export class VRCardScene {
       }
     };
     this.permanentInteractiveButtons = [btnMesh];
+    this.buildVRQuickSortPanels();
+  }
+
+  buildVRQuickSortPanels() {
+    const tableHeight = 0.82;
+
+    const createDockButton = (label, x, y, z, width, height, color, onClick) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 100;
+      const ctx = canvas.getContext('2d');
+
+      const grad = ctx.createLinearGradient(0, 0, 0, 100);
+      grad.addColorStop(0, color);
+      grad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(6, 6, 244, 88, 18);
+      ctx.fill();
+
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#f8fafc';
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 26px "Outfit", "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, 128, 50);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.anisotropy = 4;
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.3,
+        metalness: 0.1
+      });
+
+      const btnGeo = new THREE.BoxGeometry(width, height, 0.008);
+      const btnMesh = new THREE.Mesh(btnGeo, mat);
+      btnMesh.position.set(x, y, z);
+      btnMesh.castShadow = true;
+
+      btnMesh.userData = {
+        isButton: true,
+        label,
+        onClick: () => {
+          soundFx.playButtonClick();
+          if (onClick) onClick();
+        }
+      };
+
+      this.permanentInteractiveButtons.push(btnMesh);
+      return btnMesh;
+    };
+
+    const dockWoodMat = new THREE.MeshStandardMaterial({ color: 0x241108, roughness: 0.35, metalness: 0.2 });
+
+    // 1. OKEY QUICK SORT DOCK (🧠 Akıllı Diz | 📐 Seri Diz | 👥 Çift Diz)
+    this.okeyQuickSortGroup = new THREE.Group();
+    this.okeyQuickSortGroup.position.set(0, tableHeight + 0.012, 0.70);
+    this.okeyQuickSortGroup.rotation.x = -Math.PI / 4.4;
+
+    const okeyDockGeo = new THREE.BoxGeometry(0.48, 0.010, 0.075);
+    const okeyDockBase = new THREE.Mesh(okeyDockGeo, dockWoodMat);
+    this.okeyQuickSortGroup.add(okeyDockBase);
+
+    const btnAi = createDockButton('🧠 Akıllı Diz', -0.15, 0.007, 0, 0.13, 0.046, '#059669', () => {
+      if (this.onSortAiCallback) this.onSortAiCallback();
+    });
+    const btnRuns = createDockButton('📐 Seri Diz', 0.0, 0.007, 0, 0.13, 0.046, '#2563eb', () => {
+      if (this.onSortRunsCallback) this.onSortRunsCallback();
+    });
+    const btnPairs = createDockButton('👥 Çift Diz', 0.15, 0.007, 0, 0.13, 0.046, '#7c3aed', () => {
+      if (this.onSortPairsCallback) this.onSortPairsCallback();
+    });
+    this.okeyQuickSortGroup.add(btnAi, btnRuns, btnPairs);
+    this.tableGroup.add(this.okeyQuickSortGroup);
+
+    // 2. CARD GAMES QUICK SORT DOCK (🎴 Renklere Göre Sırala | 💡 AI Hamlesi)
+    this.cardQuickSortGroup = new THREE.Group();
+    this.cardQuickSortGroup.position.set(0, tableHeight + 0.012, 0.70);
+    this.cardQuickSortGroup.rotation.x = -Math.PI / 4.4;
+
+    const cardDockGeo = new THREE.BoxGeometry(0.42, 0.010, 0.075);
+    const cardDockBase = new THREE.Mesh(cardDockGeo, dockWoodMat);
+    this.cardQuickSortGroup.add(cardDockBase);
+
+    const btnSortCards = createDockButton('🎴 Kartları Sırala', -0.10, 0.007, 0, 0.18, 0.046, '#0d9488', () => {
+      if (this.onSortCardsCallback) this.onSortCardsCallback();
+    });
+    const btnAiAdvice = createDockButton('💡 AI Hamlesi', 0.11, 0.007, 0, 0.15, 0.046, '#d97706', () => {
+      if (this.onAiAdviceClickCallback) this.onAiAdviceClickCallback();
+    });
+    this.cardQuickSortGroup.add(btnSortCards, btnAiAdvice);
+    this.tableGroup.add(this.cardQuickSortGroup);
+
+    const isOkeyType = this.activeGameType === 'OKEY' || this.activeGameType === 'OKEY101';
+    this.okeyQuickSortGroup.visible = isOkeyType;
+    this.cardQuickSortGroup.visible = !isOkeyType;
   }
 
   recenterToChair() {
@@ -909,10 +1019,15 @@ export class VRCardScene {
   highlightTileOnRack(slotIndex) {
     const tileMeshes = this.playerIstakaGroup.children.filter(c => c.userData && c.userData.isOkeyTile);
     tileMeshes.forEach((mesh, idx) => {
+      const baseY = mesh.userData.baseY !== undefined ? mesh.userData.baseY : mesh.position.y;
+      const baseZ = mesh.userData.baseZ !== undefined ? mesh.userData.baseZ : mesh.position.z;
       if (idx === slotIndex) {
-        mesh.position.y += 0.024;
-        mesh.scale.set(1.1, 1.1, 1.1);
+        mesh.position.y = baseY + 0.024;
+        mesh.position.z = baseZ - 0.012;
+        mesh.scale.set(1.12, 1.12, 1.12);
       } else {
+        mesh.position.y = baseY;
+        mesh.position.z = baseZ;
         mesh.scale.set(1, 1, 1);
       }
     });
@@ -924,6 +1039,9 @@ export class VRCardScene {
 
     this.playerHandGroup.visible = !isOkeyType;
     this.playerIstakaGroup.visible = isOkeyType;
+
+    if (this.okeyQuickSortGroup) this.okeyQuickSortGroup.visible = isOkeyType;
+    if (this.cardQuickSortGroup) this.cardQuickSortGroup.visible = !isOkeyType;
 
     this.opponentHandGroups.forEach(g => g.visible = !isOkeyType);
     this.opponentIstakaGroups.forEach(g => g.visible = isOkeyType);
@@ -1316,7 +1434,15 @@ export class VRCardScene {
     this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.tempMatrix);
 
     // 1. Buttons (Dynamic VR action buttons + Permanent table controls)
-    const allButtons = [...this.interactive3DButtons, ...(this.permanentInteractiveButtons || [])];
+    const allButtons = [...this.interactive3DButtons, ...(this.permanentInteractiveButtons || [])].filter(b => {
+      let cur = b;
+      while (cur) {
+        if (cur.visible === false) return false;
+        cur = cur.parent;
+      }
+      return true;
+    });
+
     if (allButtons.length > 0) {
       const btnIntersects = this.raycaster.intersectObjects(allButtons, false);
       if (btnIntersects.length > 0) {
@@ -1351,6 +1477,16 @@ export class VRCardScene {
         }
       }
 
+      // Check click on Seat 3 discard pile (Yandan Alma)
+      if (this.discardGroups[3]) {
+        const discardHits = this.raycaster.intersectObjects(this.discardGroups[3].children, true);
+        if (discardHits.length > 0 && this.onDrawDiscardCallback) {
+          this.triggerHaptic(controller, 0.7, 40);
+          this.onDrawDiscardCallback();
+          return;
+        }
+      }
+
       const centerStackHits = this.raycaster.intersectObjects(this.tableCenterGroup.children, true);
       if (centerStackHits.length > 0 && this.onCenterStackClickCallback) {
         this.triggerHaptic(controller, 0.5, 30);
@@ -1369,7 +1505,15 @@ export class VRCardScene {
       if (this.isVRActive) return;
       this.desktopRaycaster.setFromCamera(this.mouse, this.camera);
 
-      const allButtons = [...this.interactive3DButtons, ...(this.permanentInteractiveButtons || [])];
+      const allButtons = [...this.interactive3DButtons, ...(this.permanentInteractiveButtons || [])].filter(b => {
+        let cur = b;
+        while (cur) {
+          if (cur.visible === false) return false;
+          cur = cur.parent;
+        }
+        return true;
+      });
+
       if (allButtons.length > 0) {
         const btnIntersects = this.desktopRaycaster.intersectObjects(allButtons, false);
         if (btnIntersects.length > 0) {
@@ -1381,15 +1525,32 @@ export class VRCardScene {
       const isOkeyType = this.activeGameType === 'OKEY' || this.activeGameType === 'OKEY101';
       if (!isOkeyType) {
         const cardMeshes = this.playerHandGroup.children.filter(c => c.userData && c.userData.isCard);
-        const intersects = this.desktopRaycaster.intersectObjects(cardMeshes, false);
+        const intersects = this.desktopRaycaster.intersectObjects(cardMeshes, true);
         if (intersects.length > 0 && this.onCardSelectedCallback) {
-          this.onCardSelectedCallback(intersects[0].object.userData.card);
+          let hitCard = intersects[0].object;
+          while (hitCard.parent && hitCard.parent !== this.playerHandGroup) hitCard = hitCard.parent;
+          if (hitCard.userData && hitCard.userData.card) {
+            this.onCardSelectedCallback(hitCard.userData.card);
+          }
         }
       } else {
         const tileMeshes = this.playerIstakaGroup.children.filter(t => t.userData && t.userData.isOkeyTile);
-        const intersects = this.desktopRaycaster.intersectObjects(tileMeshes, false);
+        const intersects = this.desktopRaycaster.intersectObjects(tileMeshes, true);
         if (intersects.length > 0 && this.onTileSelectedCallback) {
-          this.onTileSelectedCallback(intersects[0].object.userData.tile);
+          let hitTile = intersects[0].object;
+          while (hitTile.parent && hitTile.parent !== this.playerIstakaGroup) hitTile = hitTile.parent;
+          if (hitTile.userData && hitTile.userData.tile) {
+            this.onTileSelectedCallback(hitTile.userData.tile);
+          }
+        }
+
+        // Check click on Seat 3 discard pile (Yandan Alma)
+        if (this.discardGroups[3]) {
+          const discardHits = this.desktopRaycaster.intersectObjects(this.discardGroups[3].children, true);
+          if (discardHits.length > 0 && this.onDrawDiscardCallback) {
+            this.onDrawDiscardCallback();
+            return;
+          }
         }
 
         const centerStackHits = this.desktopRaycaster.intersectObjects(this.tableCenterGroup.children, true);
@@ -1400,38 +1561,115 @@ export class VRCardScene {
     });
   }
 
+  createFloatingNameBadge(name, color = '#10b981', icon = '👤', subText = '') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 76;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 256, 76);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(1, '#1e293b');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(4, 4, 248, 68, 20);
+    ctx.fill();
+
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(36, 38, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icon, 36, 38);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 24px "Outfit", "Segoe UI", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const displayTitle = name.length > 12 ? name.substring(0, 11) + '…' : name;
+    ctx.fillText(displayTitle, 66, subText ? 26 : 38);
+
+    if (subText) {
+      ctx.fillStyle = color;
+      ctx.font = 'bold 17px "Outfit", "Segoe UI", sans-serif';
+      ctx.fillText(subText, 66, 52);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 4;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    const geo = new THREE.PlaneGeometry(0.14, 0.042);
+    const mesh = new THREE.Mesh(geo, mat);
+    return mesh;
+  }
+
   // --- CARDS RENDERING ---
   renderPlayerHand(handCards, playableCardIds = null, recommendedCardId = null) {
     while (this.playerHandGroup.children.length > 0) this.playerHandGroup.remove(this.playerHandGroup.children.pop());
-    const total = handCards.length;
+    const total = handCards?.length || 0;
     if (total === 0) return;
 
-    // Beautiful natural card fanning
-    const arcAngle = Math.min(Math.PI * 0.40, total * 0.052);
-    const startAngle = -arcAngle / 2;
-    const stepAngle = total > 1 ? arcAngle / (total - 1) : 0;
-    const radius = 0.46;
+    // Wide ergonomic curve: Every card's top-left corner (rank + suit) is guaranteed 100% visible
+    const maxSpan = 0.68;
+    const spacing = total > 1 ? Math.min(0.052, maxSpan / (total - 1)) : 0;
 
     handCards.forEach((card, idx) => {
+      const isPlayable = !playableCardIds || playableCardIds.includes(card.id);
       const isRecommended = Boolean(recommendedCardId && card.id === recommendedCardId);
+      const isSelected = this.selectedCardId === card.id;
+
       const mesh = createCard3DMesh(card, isRecommended);
-      const angle = startAngle + idx * stepAngle;
 
-      let yOffset = idx * 0.0008;
-      let zOffset = -(Math.cos(angle) * radius - radius) * 0.5;
-      if (isRecommended) {
-        yOffset += 0.024;
-        zOffset -= 0.015;
+      // Centered layout along horizontal arc
+      const x = total > 1 ? (idx - (total - 1) / 2) * spacing : 0;
+      const normX = total > 1 ? (idx - (total - 1) / 2) / ((total - 1) / 2) : 0; // -1 to +1
+
+      // Gentle inward curve towards the player
+      let z = -Math.pow(normX, 2) * 0.038;
+      // Stacking from left-to-right ensures that each card covers only the right side of the preceding card,
+      // leaving the preceding card's TOP-LEFT corner index completely exposed and readable!
+      let y = idx * 0.0016;
+
+      if (isRecommended || isSelected) {
+        y += 0.030;
+        z -= 0.018;
+        mesh.scale.set(1.08, 1.08, 1.08);
       }
 
-      mesh.position.set(Math.sin(angle) * radius, yOffset, zOffset);
-      mesh.rotation.z = -angle * 0.65;
-      mesh.rotation.y = angle * 0.22;
-      mesh.rotation.x = -0.18; // natural tilt towards player eye-level
+      mesh.position.set(x, y, z);
 
-      if (playableCardIds && !playableCardIds.includes(card.id)) {
-        mesh.traverse(child => { if (child.material) child.material.color = new THREE.Color(0x666666); });
+      // Ergonomic face-up angles facing player eye level (seated at chair)
+      mesh.rotation.x = -Math.PI / 4.0;
+      mesh.rotation.y = normX * 0.20;
+      mesh.rotation.z = -normX * 0.12;
+
+      if (!isPlayable) {
+        mesh.traverse(child => {
+          if (child.material && child.material !== mesh.material) {
+            child.material = child.material.clone();
+            child.material.color = new THREE.Color(0x64748b);
+            child.material.opacity = 0.65;
+            child.material.transparent = true;
+          }
+        });
       }
+
+      mesh.userData = {
+        card,
+        isCard: true,
+        isRecommended,
+        isSelected,
+        isPlayable
+      };
+
       this.playerHandGroup.add(mesh);
     });
   }
@@ -1445,14 +1683,14 @@ export class VRCardScene {
       if (!p || !p.hand) continue;
 
       const count = p.hand.length;
-      const spacing = 0.022;
+      const spacing = 0.024;
       const startX = -((count - 1) * spacing) / 2;
 
       for (let i = 0; i < count; i++) {
         const dummyCard = { rank: 'A', suit: 'S', isRed: false };
         const mesh = createCard3DMesh(dummyCard);
         mesh.position.set(startX + i * spacing, i * 0.0006, 0);
-        mesh.rotation.x = Math.PI / 2;
+        mesh.rotation.x = Math.PI / 2.2;
         oppGroup.add(mesh);
       }
     }
@@ -1460,18 +1698,74 @@ export class VRCardScene {
 
   renderTableCards(tableCards) {
     while (this.tableCenterGroup.children.length > 0) this.tableCenterGroup.remove(this.tableCenterGroup.children.pop());
+    if (!tableCards || tableCards.length === 0) return;
 
-    tableCards.forEach((tc, idx) => {
-      const card = tc.card || tc;
-      const isFaceUp = tc.faceUp !== undefined ? tc.faceUp : true;
-      const mesh = createCard3DMesh(card);
+    const defaultNames = ['Siz', 'Hasan Dayı', 'Hayrettin', 'Serdar'];
+    const seatPillColors = ['#10b981', '#f59e0b', '#3b82f6', '#a855f7'];
 
-      // Sits flat on the green felt table
-      mesh.position.set((Math.sin(idx * 2.3) * 0.035), idx * 0.0012, (Math.cos(idx * 3.1) * 0.035));
-      mesh.rotation.x = isFaceUp ? -Math.PI / 2 : Math.PI / 2;
-      mesh.rotation.z = (idx * 0.24) - 0.35;
-      this.tableCenterGroup.add(mesh);
-    });
+    // Check if these cards belong to a trick (e.g. Batak where playerIndex or seat is attached)
+    const isTrick = tableCards.some(tc => (tc && (tc.playerIndex !== undefined || tc.seat !== undefined)));
+
+    if (isTrick) {
+      // 4 distinct quadrants arranged on the felt table facing the seated player
+      const seatLayouts = {
+        0: { x: 0, z: 0.16, rotX: -Math.PI / 3.4, rotY: 0, rotZ: 0 },
+        1: { x: 0.20, z: -0.01, rotX: -Math.PI / 3.5, rotY: -Math.PI / 9, rotZ: -0.08 },
+        2: { x: 0, z: -0.17, rotX: -Math.PI / 3.5, rotY: 0, rotZ: 0 },
+        3: { x: -0.20, z: -0.01, rotX: -Math.PI / 3.5, rotY: Math.PI / 9, rotZ: 0.08 }
+      };
+
+      tableCards.forEach((tc, idx) => {
+        const card = tc.card || tc;
+        const seat = tc.playerIndex !== undefined ? tc.playerIndex : (tc.seat !== undefined ? tc.seat : idx % 4);
+        const layout = seatLayouts[seat] || seatLayouts[idx % 4];
+
+        const cardHolder = new THREE.Group();
+        cardHolder.position.set(layout.x, 0.012 + idx * 0.002, layout.z);
+        cardHolder.rotation.set(layout.rotX, layout.rotY, layout.rotZ);
+
+        const cardMesh = createCard3DMesh(card);
+        cardMesh.scale.set(1.22, 1.22, 1.22); // Enlarged 1.22x for crystal-clear VR legibility
+        cardHolder.add(cardMesh);
+
+        // Floating 3D Player Name Badge above card
+        const pName = (seat === 0) ? 'Siz' : (this.tablePlayers?.[seat]?.name || defaultNames[seat]);
+        const badge = this.createFloatingNameBadge(pName, seatPillColors[seat] || '#3b82f6');
+        badge.position.set(0, 0.098, 0.006);
+        cardHolder.add(badge);
+
+        this.tableCenterGroup.add(cardHolder);
+      });
+    } else {
+      // Stacked table layout (e.g. Pişti)
+      const total = tableCards.length;
+      tableCards.forEach((tc, idx) => {
+        const card = tc.card || tc;
+        const isFaceUp = tc.faceUp !== undefined ? tc.faceUp : true;
+        const isTopCard = idx === total - 1;
+        const cardMesh = createCard3DMesh(card);
+
+        if (isTopCard) {
+          cardMesh.scale.set(1.22, 1.22, 1.22);
+          cardMesh.position.set(0, 0.016 + idx * 0.003, 0.02);
+          cardMesh.rotation.x = isFaceUp ? -Math.PI / 3.2 : Math.PI / 3.2;
+
+          if (tc.playerIndex !== undefined) {
+            const pName = (tc.playerIndex === 0) ? 'Siz' : (this.tablePlayers?.[tc.playerIndex]?.name || defaultNames[tc.playerIndex]);
+            const badge = this.createFloatingNameBadge(pName, seatPillColors[tc.playerIndex] || '#10b981');
+            badge.position.set(0, 0.098, 0.006);
+            cardMesh.add(badge);
+          }
+        } else {
+          const offsetAngle = idx * 0.15 - 0.30;
+          cardMesh.position.set(Math.sin(offsetAngle) * 0.035, idx * 0.002, Math.cos(offsetAngle) * 0.02 - 0.03);
+          cardMesh.rotation.x = isFaceUp ? -Math.PI / 2.3 : Math.PI / 2.3;
+          cardMesh.rotation.z = offsetAngle * 0.5;
+        }
+
+        this.tableCenterGroup.add(cardMesh);
+      });
+    }
   }
 
   animateCardPlay(card, fromSeat, targetTablePos, onComplete) {
@@ -1489,8 +1783,16 @@ export class VRCardScene {
     flyingMesh.position.copy(startPos);
     this.scene.add(flyingMesh);
 
-    const targetPos = targetTablePos || new THREE.Vector3((Math.random() - 0.5) * 0.08, 0.835 + Math.random() * 0.005, (Math.random() - 0.5) * 0.08);
-    const duration = 450;
+    // Designated quadrant positions on the table
+    const quadrantOffsets = {
+      0: new THREE.Vector3(0, 0.832, 0.16),
+      1: new THREE.Vector3(0.20, 0.832, -0.01),
+      2: new THREE.Vector3(0, 0.832, -0.17),
+      3: new THREE.Vector3(-0.20, 0.832, -0.01)
+    };
+
+    const targetPos = targetTablePos || quadrantOffsets[fromSeat] || new THREE.Vector3(0, 0.832, 0);
+    const duration = 420;
     const startTime = performance.now();
 
     const animObj = {
@@ -1500,8 +1802,8 @@ export class VRCardScene {
         const ease = 1 - Math.pow(1 - progress, 3);
 
         flyingMesh.position.lerpVectors(startPos, targetPos, ease);
-        flyingMesh.position.y += Math.sin(progress * Math.PI) * 0.15;
-        flyingMesh.rotation.x = THREE.MathUtils.lerp(0, -Math.PI / 2, ease);
+        flyingMesh.position.y += Math.sin(progress * Math.PI) * 0.14;
+        flyingMesh.rotation.x = THREE.MathUtils.lerp(0, -Math.PI / 3.4, ease);
 
         if (progress >= 1.0) {
           const pan = (fromSeat === 1 ? 0.6 : (fromSeat === 3 ? -0.6 : 0));
@@ -1561,29 +1863,51 @@ export class VRCardScene {
     while (this.playerIstakaGroup.children.length > 1) {
       this.playerIstakaGroup.remove(this.playerIstakaGroup.children[1]);
     }
+    if (!handTiles || handTiles.length === 0) return;
 
-    const slotSpacing = 0.042;
-    const maxPerTier = 11;
+    const total = handTiles.length;
+    const maxPerTier = total > 15 ? 11 : 12; // 101 Okey has up to 21-22 tiles, classic has 14-15
+    const slotSpacing = 0.045; // 4.5cm slot spacing ensures clear separation
 
     handTiles.forEach((tile, idx) => {
       const isSelected = this.selectedTileIndex === idx;
       const isRecommended = recommendedIndex === idx;
       const mesh = createOkeyTile3DMesh(tile, isSelected, isRecommended);
+
       const tier = idx < maxPerTier ? 0 : 1; // 0 = upper shelf, 1 = lower shelf
       const col = idx % maxPerTier;
+      const tilesInThisTier = tier === 0 ? Math.min(total, maxPerTier) : (total - maxPerTier);
 
-      const x = (col - (maxPerTier - 1) / 2) * slotSpacing;
-      let y = tier === 0 ? 0.076 : 0.040;
-      let z = tier === 0 ? -0.012 : 0.030;
+      // Centered placement along the shelf
+      const x = (col - (tilesInThisTier - 1) / 2) * slotSpacing;
 
-      if (isSelected || isRecommended) {
-        y += 0.012;
-        z += 0.008;
+      // High-clearance stepped shelf heights:
+      // Upper shelf sits higher and recessed: y = 0.092, z = -0.022
+      // Lower shelf sits forward: y = 0.036, z = 0.038
+      // Lower tile top at 0.0856m is strictly below upper shelf base at 0.092m! Zero occlusion!
+      let y = tier === 0 ? 0.092 : 0.036;
+      let z = tier === 0 ? -0.022 : 0.038;
+
+      if (isSelected) {
+        y += 0.020;
+        z -= 0.010;
+      } else if (isRecommended) {
+        y += 0.014;
+        z -= 0.008;
       }
 
       mesh.position.set(x, y, z);
-      // Resting tilt against rack
-      mesh.rotation.x = Math.PI / 18;
+      // Inclined backwards resting naturally against the rack backboard
+      mesh.rotation.x = Math.PI / 6.5;
+
+      mesh.userData = {
+        tile,
+        tileIndex: idx,
+        isOkeyTile: true,
+        baseY: tier === 0 ? 0.092 : 0.036,
+        baseZ: tier === 0 ? -0.022 : 0.038
+      };
+
       this.playerIstakaGroup.add(mesh);
     });
   }
@@ -1597,17 +1921,22 @@ export class VRCardScene {
       if (!p || !p.hand) continue;
 
       const count = p.hand.length;
-      const slotSpacing = 0.042;
-      const maxPerTier = 11;
+      const maxPerTier = count > 15 ? 11 : 12;
+      const slotSpacing = 0.045;
 
       for (let i = 0; i < count; i++) {
         const dummyTile = { colorKey: 'RED', number: 1, isFakeOkey: false };
         const mesh = createOkeyTile3DMesh(dummyTile);
         const tier = i < maxPerTier ? 0 : 1;
         const col = i % maxPerTier;
+        const tilesInTier = tier === 0 ? Math.min(count, maxPerTier) : (count - maxPerTier);
 
-        mesh.position.set((col - (maxPerTier - 1) / 2) * slotSpacing, tier === 0 ? 0.076 : 0.040, tier === 0 ? -0.012 : 0.030);
-        mesh.rotation.x = Math.PI;
+        mesh.position.set(
+          (col - (tilesInTier - 1) / 2) * slotSpacing,
+          tier === 0 ? 0.092 : 0.036,
+          tier === 0 ? -0.022 : 0.038
+        );
+        mesh.rotation.x = Math.PI; // Face-down facing towards opponents
         oppIstaka.add(mesh);
       }
     }
@@ -1636,19 +1965,67 @@ export class VRCardScene {
     }
   }
 
-  renderOkeyDiscards(discardPiles) {
+  renderOkeyDiscards(discardPiles, canDrawLeft = false) {
+    const defaultNames = ['Siz', 'Hasan Dayı', 'Hayrettin', 'Serdar'];
+    const seatPillColors = ['#10b981', '#f59e0b', '#3b82f6', '#a855f7'];
+
     discardPiles.forEach((pile, seat) => {
       const dg = this.discardGroups[seat];
       while (dg.children.length > 0) dg.remove(dg.children.pop());
-      if (pile.length === 0) return;
 
-      const topTiles = pile.slice(-3);
-      topTiles.forEach((tile, i) => {
+      // 1. Elegant Wooden Coaster Tray with Brass Rim
+      const trayGeo = new THREE.BoxGeometry(0.12, 0.008, 0.15);
+      const trayMat = new THREE.MeshStandardMaterial({ color: 0x1c1008, roughness: 0.45, metalness: 0.15 });
+      const trayMesh = new THREE.Mesh(trayGeo, trayMat);
+      trayMesh.position.set(0, 0, 0);
+      trayMesh.receiveShadow = true;
+      dg.add(trayMesh);
+
+      const borderGeo = new THREE.BoxGeometry(0.124, 0.004, 0.154);
+      const brassMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.75, roughness: 0.3 });
+      const borderMesh = new THREE.Mesh(borderGeo, brassMat);
+      borderMesh.position.set(0, -0.002, 0);
+      dg.add(borderMesh);
+
+      // 2. Player Name Badge above discard tray
+      const pName = (seat === 0) ? 'Siz' : (this.tablePlayers?.[seat]?.name || defaultNames[seat]);
+      const isLeftPlayer = (seat === 3);
+      const sub = (isLeftPlayer && canDrawLeft) ? '📥 Yandan Al' : '';
+      const badge = this.createFloatingNameBadge(
+        pName,
+        isLeftPlayer && canDrawLeft ? '#22c55e' : (seatPillColors[seat] || '#3b82f6'),
+        '👤',
+        sub
+      );
+      badge.position.set(0, 0.078, -0.06);
+      badge.rotation.x = -Math.PI / 4;
+      dg.add(badge);
+
+      if (!pile || pile.length === 0) return;
+
+      // 3. Render discarded tiles
+      const topTile = pile[pile.length - 1];
+      const previousTiles = pile.slice(-4, -1);
+
+      // Older tiles lie flat underneath
+      previousTiles.forEach((tile, i) => {
         const mesh = createOkeyTile3DMesh(tile);
-        mesh.position.set(i * 0.012, i * 0.006, i * 0.005);
+        mesh.position.set((i - 1) * 0.008, 0.006 + i * 0.003, -0.02 + i * 0.008);
         mesh.rotation.x = -Math.PI / 2;
+        mesh.scale.set(0.92, 0.92, 0.92);
         dg.add(mesh);
       });
+
+      // The TOP tile is upright, prominently angled, and enlarged
+      const isHighlightLeft = isLeftPlayer && canDrawLeft;
+      const topMesh = createOkeyTile3DMesh(topTile, isHighlightLeft, isHighlightLeft);
+      topMesh.scale.set(1.22, 1.22, 1.22);
+      topMesh.position.set(0, 0.022, 0.015);
+      topMesh.rotation.x = -Math.PI / 3.2; // Tilted upright facing the players!
+      topMesh.userData.isDiscardTop = true;
+      topMesh.userData.seat = seat;
+      topMesh.userData.tile = topTile;
+      dg.add(topMesh);
     });
   }
 

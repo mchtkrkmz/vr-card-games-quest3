@@ -161,7 +161,7 @@ export class PistiGameEngine {
     }
 
     // Add card to table visually first
-    this.tableCards.push({ card: playedCard, faceUp: true, isHiddenBase: false });
+    this.tableCards.push({ card: playedCard, faceUp: true, isHiddenBase: false, playerIndex });
 
     this.emit('card_played', {
       playerIndex,

@@ -179,22 +179,21 @@ class OkeyTextureGenerator {
 
       // 3. Deep Debossed Colored Enamel Number (Engraved 3D feel)
       ctx.save();
-      // Drop Shadow (engraved inner shadow)
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
       ctx.shadowOffsetX = 3;
       ctx.shadowOffsetY = 6;
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 8;
 
       ctx.fillStyle = color.hex;
-      ctx.font = '900 240px "Outfit", "Segoe UI", sans-serif';
+      ctx.font = '900 255px "Outfit", "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${tile.number}`, cx, cy - 35);
       ctx.restore();
 
-      // Highlight bevel inside number
+      // Sharp crisp outline for VR clarity
       ctx.strokeStyle = color.darkHex;
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 6;
       ctx.strokeText(`${tile.number}`, cx, cy - 35);
 
       // Traditional Crescent & Star emblem dot beneath number
@@ -250,9 +249,9 @@ export const okeyTexGen = new OkeyTextureGenerator();
 
 // 3D Realistic Melamine Tile Mesh
 export function createOkeyTile3DMesh(tileData, isSelected = false, isRecommended = false) {
-  // Tile dimensions in VR: ~3.8cm width x ~5.4cm height x ~1.2cm depth
-  const width = 0.038;
-  const height = 0.054;
+  // Tile dimensions in VR: ~4.0cm width x ~5.6cm height x ~1.2cm depth
+  const width = 0.040;
+  const height = 0.056;
   const depth = 0.012;
 
   const geometry = new THREE.BoxGeometry(width, height, depth);
@@ -268,7 +267,12 @@ export function createOkeyTile3DMesh(tileData, isSelected = false, isRecommended
   if (isSelected) {
     sideColor = 0x22c55e;
     emissiveColor = 0x15803d;
-    emissiveIntensity = 0.45;
+    emissiveIntensity = 0.65;
+  } else if (tileData.isRealOkey) {
+    // Real Okey tile glows with prestige gold outline
+    sideColor = 0xfef08a;
+    emissiveColor = 0xd97706;
+    emissiveIntensity = 0.55;
   } else if (isRecommended) {
     sideColor = 0xfbbf24;
     emissiveColor = 0xd97706;
@@ -330,9 +334,9 @@ export function createOkeyTile3DMesh(tileData, isSelected = false, isRecommended
 export function createIstaka3DMesh() {
   const istakaGroup = new THREE.Group();
 
-  const width = 0.54;
-  const height = 0.072;
-  const depth = 0.095;
+  const width = 0.58;
+  const height = 0.082;
+  const depth = 0.115;
 
   const walnutTexture = okeyTexGen.getWalnutWoodTexture();
   const woodMaterial = new THREE.MeshStandardMaterial({
@@ -352,22 +356,22 @@ export function createIstaka3DMesh() {
   // 2. Beveled Side End Caps
   const capMat = new THREE.MeshStandardMaterial({ color: 0x241108, roughness: 0.3, metalness: 0.2 });
   [-width / 2, width / 2].forEach(x => {
-    const capGeo = new THREE.BoxGeometry(0.014, height + 0.008, depth + 0.008);
+    const capGeo = new THREE.BoxGeometry(0.016, height + 0.010, depth + 0.010);
     const cap = new THREE.Mesh(capGeo, capMat);
     cap.position.set(x, height / 2, 0);
     istakaGroup.add(cap);
   });
 
-  // 3. Upper Tier Shelf Ridge
-  const upperRailGeo = new THREE.BoxGeometry(width - 0.01, 0.012, 0.012);
+  // 3. Upper Tier Shelf Ridge (Raised higher to ensure zero visual overlap)
+  const upperRailGeo = new THREE.BoxGeometry(width - 0.01, 0.014, 0.014);
   const upperRail = new THREE.Mesh(upperRailGeo, woodMaterial);
-  upperRail.position.set(0, height + 0.002, -0.012);
+  upperRail.position.set(0, height + 0.006, -0.024);
   istakaGroup.add(upperRail);
 
   // 4. Lower Tier Shelf Ridge
-  const lowerRailGeo = new THREE.BoxGeometry(width - 0.01, 0.012, 0.012);
+  const lowerRailGeo = new THREE.BoxGeometry(width - 0.01, 0.014, 0.014);
   const lowerRail = new THREE.Mesh(lowerRailGeo, woodMaterial);
-  lowerRail.position.set(0, height / 2 + 0.004, 0.032);
+  lowerRail.position.set(0, height / 2 + 0.002, 0.038);
   istakaGroup.add(lowerRail);
 
   // 5. Brass Center Nameplate ("KIRAATHANE VIP")

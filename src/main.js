@@ -146,6 +146,19 @@ class AppManager {
     this.scene.onCardSelectedCallback = this.handleUserCardSelected.bind(this);
     this.scene.onTileSelectedCallback = this.handleUserTileSelected.bind(this);
     this.scene.onCenterStackClickCallback = this.handleCenterStackClick.bind(this);
+    this.scene.onSortAiCallback = () => this.sortHandAI();
+    this.scene.onSortRunsCallback = () => this.sortHandRuns();
+    this.scene.onSortPairsCallback = () => this.sortHandPairs();
+    this.scene.onSortCardsCallback = () => this.sortBatakCards();
+    this.scene.onDrawDiscardCallback = () => {
+      if (this.gameEngine && typeof this.gameEngine.drawFromDiscard === 'function') {
+        this.gameEngine.drawFromDiscard(0);
+        this.hideActionPanel();
+      }
+    };
+    this.scene.onAiAdviceClickCallback = () => {
+      this.applyAIRecommendation();
+    };
 
     this.renderAvatarPickers();
     this.renderThemeSelector();
@@ -990,6 +1003,12 @@ class AppManager {
     this.gameEngine.startNewMatch();
   }
 
+  renderOkeyDiscardsHelper() {
+    if (!this.gameEngine || !this.gameEngine.discardPiles) return;
+    const canDrawLeft = (this.gameEngine.currentTurn === 0 && this.gameEngine.turnPhase === 'DRAW' && this.gameEngine.discardPiles[3]?.length > 0);
+    this.scene.renderOkeyDiscards(this.gameEngine.discardPiles, canDrawLeft);
+  }
+
   handleOkey101Event(event, data) {
     if (event === 'log') {
       this.appendLog(data.message);
@@ -1000,7 +1019,7 @@ class AppManager {
       this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
       this.scene.renderOpponentIstakas(this.gameEngine.players);
       this.scene.renderCenterOkeyStack(data.drawStackCount, data.gosterge);
-      this.scene.renderOkeyDiscards(this.gameEngine.discardPiles);
+      this.renderOkeyDiscardsHelper();
       this.scene.render101OpenedPers(this.gameEngine.tableOpenedPers);
 
       this.updateOkey101HUD('Taşlar Dağıtıldı (21 Taş)');
@@ -1016,7 +1035,7 @@ class AppManager {
       this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
       this.scene.renderOpponentIstakas(this.gameEngine.players);
       this.scene.renderCenterOkeyStack(this.gameEngine.drawStack.length, this.gameEngine.gostergeTile);
-      this.scene.renderOkeyDiscards(this.gameEngine.discardPiles);
+      this.renderOkeyDiscardsHelper();
 
       if (data.playerIndex === 0) {
         const { totalPoints } = this.gameEngine.calculateHandPerPoints(this.gameEngine.players[0]);
@@ -1036,12 +1055,13 @@ class AppManager {
       this.updateAIAdvisor();
     } else if (event === 'tile_discarded') {
       this.scene.animateTileDiscard(data.tile, data.playerIndex, () => {
-        this.scene.renderOkeyDiscards(this.gameEngine.discardPiles);
+        this.renderOkeyDiscardsHelper();
       });
       this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
       this.scene.renderOpponentIstakas(this.gameEngine.players);
       this.updateAIAdvisor();
     } else if (event === 'turn_changed') {
+      this.renderOkeyDiscardsHelper();
       const isMyTurn = data.currentTurn === 0;
       if (isMyTurn) {
         this.updateOkey101HUD('🌟 SIRA SİZDE! Ortadan veya yandan taş çekin.');
@@ -1214,7 +1234,7 @@ class AppManager {
       this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
       this.scene.renderOpponentIstakas(this.gameEngine.players);
       this.scene.renderCenterOkeyStack(data.drawStackCount, data.gosterge);
-      this.scene.renderOkeyDiscards(this.gameEngine.discardPiles);
+      this.renderOkeyDiscardsHelper();
 
       this.updateOkeyHUD('Taşlar Dağıtıldı');
       soundFx.playOkeyTileClick(1.0);
@@ -1228,7 +1248,7 @@ class AppManager {
       this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
       this.scene.renderOpponentIstakas(this.gameEngine.players);
       this.scene.renderCenterOkeyStack(this.gameEngine.drawStack.length, this.gameEngine.gostergeTile);
-      this.scene.renderOkeyDiscards(this.gameEngine.discardPiles);
+      this.renderOkeyDiscardsHelper();
 
       if (data.playerIndex === 0) {
         this.updateOkeyHUD('🌟 Taş çektiniz. Istakadan atılacak taşı seçin.');
@@ -1240,12 +1260,13 @@ class AppManager {
       this.updateAIAdvisor();
     } else if (event === 'tile_discarded') {
       this.scene.animateTileDiscard(data.tile, data.playerIndex, () => {
-        this.scene.renderOkeyDiscards(this.gameEngine.discardPiles);
+        this.renderOkeyDiscardsHelper();
       });
       this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
       this.scene.renderOpponentIstakas(this.gameEngine.players);
       this.updateAIAdvisor();
     } else if (event === 'turn_changed') {
+      this.renderOkeyDiscardsHelper();
       const isMyTurn = data.currentTurn === 0;
       if (isMyTurn) {
         this.updateOkeyHUD('🌟 SIRA SİZDE! Ortadan veya yandan taş çekin.');
@@ -1543,8 +1564,7 @@ class AppManager {
       this.appendLog(data.message);
     } else if (event === 'deal_complete') {
       this.updateBatakHUD('Kartlar Dağıtıldı');
-      const player0 = this.gameEngine.players[0];
-      this.scene.renderPlayerHand(player0.hand);
+      this.sortBatakCards();
       this.scene.renderOpponentHands(this.gameEngine.players);
       soundFx.playCardDeal();
       this.updateAIAdvisor();
