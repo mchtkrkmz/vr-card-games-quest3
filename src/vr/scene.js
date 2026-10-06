@@ -67,7 +67,12 @@ export class VRCardScene {
 
     // Core Three.js components
     this.scene = null;
+    this.cameraRig = null; // WebXR Dolly / Player Body Anchor
     this.camera = null;
+    this.playerChair = null; // Local Player's Authentic Cafe Chair
+    this.hasCalibratedVRSeat = false;
+    this._lastThumbClickTime = 0;
+    this.permanentInteractiveButtons = [];
     this.renderer = null;
     this.ambientLight = null;
     this.tableSpot = null;
@@ -135,9 +140,16 @@ export class VRCardScene {
     this.scene.background = new THREE.Color(0x0c0e14);
     this.scene.fog = new THREE.FogExp2(0x0c0e14, 0.09);
 
+    // Camera Rig (Dolly): Anchors player's physical headset & controllers to the chair
+    this.cameraRig = new THREE.Group();
+    this.cameraRig.name = 'CameraRig';
+    this.cameraRig.position.set(0, 0, 0); // Origin for Desktop mode
+    this.scene.add(this.cameraRig);
+
     this.camera = new THREE.PerspectiveCamera(70, this.width / this.height, 0.05, 50);
     this.camera.position.set(0, 1.25, 0.95);
     this.camera.lookAt(0, 0.85, 0);
+    this.cameraRig.add(this.camera);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setSize(this.width, this.height);
@@ -168,17 +180,33 @@ export class VRCardScene {
 
     this.renderer.xr.addEventListener('sessionstart', () => {
       this.isVRActive = true;
-      this.camera.position.set(0, 1.2, 0.8);
+      this.hasCalibratedVRSeat = false;
       soundFx.initContext();
+
+      // Immediately place camera rig at the player's chair (Z = 1.05m)
+      this.cameraRig.position.set(0, 0, 1.05);
+
+      // Listen for Meta Quest OS recenter (holding Meta button on right controller)
+      const refSpace = this.renderer.xr.getReferenceSpace();
+      if (refSpace) {
+        refSpace.addEventListener('reset', () => {
+          this.recenterToChair();
+        });
+      }
     });
 
     this.renderer.xr.addEventListener('sessionend', () => {
       this.isVRActive = false;
+      this.hasCalibratedVRSeat = false;
+      this.cameraRig.position.set(0, 0, 0);
+      this.camera.position.set(0, 1.25, 0.95);
+      this.camera.lookAt(0, 0.85, 0);
     });
 
     this.buildLighting();
     this.buildKahvehaneEnvironment();
     this.buildCardTable();
+    this.buildPlayerChair();
     this.buildTableOpponentAvatars();
     this.buildSideTablePatrons();
     this.buildFloatingVRHUD();
@@ -703,6 +731,7 @@ export class VRCardScene {
       this.discardGroups.push(dg);
     });
 
+    this.buildPermanentVRControls();
     this.scene.add(this.tableGroup);
   }
 
@@ -746,6 +775,135 @@ export class VRCardScene {
     teaGroup.add(this.steamPoints);
 
     this.tableGroup.add(teaGroup);
+  }
+
+  buildPlayerChair() {
+    if (this.playerChair) {
+      this.scene.remove(this.playerChair);
+    }
+    // Authentic Kıraathane Chair for Local Player (Seat 0: X=0, Z=1.05m, facing table)
+    this.playerChair = avatarBuilder.createCafeChair();
+    this.playerChair.position.set(0, 0, 1.05);
+    this.playerChair.rotation.y = Math.PI; // Face forward (-Z) towards table
+
+    // Deluxe Kahvehane emerald green felt cushion for player's comfort
+    const cushion = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.03, 0.42),
+      new THREE.MeshStandardMaterial({ color: 0x0f3b25, roughness: 0.82, metalness: 0.05 })
+    );
+    cushion.position.set(0, 0.505, 0);
+    this.playerChair.add(cushion);
+
+    this.scene.add(this.playerChair);
+  }
+
+  buildPermanentVRControls() {
+    const tableHeight = 0.82;
+
+    // Authentic Brass Plaque on Player's Table Left: "🪑 Sandalyeye Otur" (Recenter to Chair)
+    const plaqueGeo = new THREE.BoxGeometry(0.24, 0.015, 0.10);
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.85, roughness: 0.25 });
+    const plaque = new THREE.Mesh(plaqueGeo, brassMat);
+    plaque.position.set(-0.52, tableHeight + 0.008, 0.64);
+    plaque.rotation.y = -Math.PI / 7;
+    this.tableGroup.add(plaque);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#1e293b';
+    ctx.roundRect(6, 6, 244, 116, 16);
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#d4af37';
+    ctx.stroke();
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 26px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🪑 Sandalyeye Otur', 128, 64);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.MeshBasicMaterial({ map: tex });
+    const btnGeo = new THREE.PlaneGeometry(0.22, 0.088);
+    const btnMesh = new THREE.Mesh(btnGeo, mat);
+    btnMesh.position.set(0, 0.009, 0);
+    btnMesh.rotation.x = -Math.PI / 2;
+    plaque.add(btnMesh);
+
+    btnMesh.userData = {
+      isButton: true,
+      label: 'recenter_chair',
+      onClick: () => {
+        soundFx.playButtonClick();
+        this.recenterToChair();
+      }
+    };
+    this.permanentInteractiveButtons = [btnMesh];
+  }
+
+  recenterToChair() {
+    const targetSeatX = 0;
+    const targetSeatZ = 1.05; // Exact position in front of player's chair
+
+    if (this.isVRActive && this.camera) {
+      // In Three.js WebXR, camera.position holds the headset's physical offset relative to guardian origin
+      const hx = this.camera.position.x || 0;
+      const hz = this.camera.position.z || 0;
+
+      // Position cameraRig so user's head in world space sits precisely at (0, y, 1.05)
+      this.cameraRig.position.x = targetSeatX - hx;
+      this.cameraRig.position.z = targetSeatZ - hz;
+
+      // Seated height comfort:
+      // If user is standing physically in room (eye height > 1.45m), lower rig so they sit naturally at table (~1.22m)
+      // If user is already sitting down physically, keep rig Y = 0 to preserve real floor tracking
+      const hy = this.camera.position.y || 1.2;
+      if (hy > 1.45) {
+        this.cameraRig.position.y = 1.22 - hy;
+      } else {
+        this.cameraRig.position.y = 0;
+      }
+    } else {
+      this.cameraRig.position.set(targetSeatX, 0, targetSeatZ);
+    }
+  }
+
+  handleVRThumbstickNavigation() {
+    for (const controller of this.controllers) {
+      if (controller && controller.inputSource && controller.inputSource.gamepad) {
+        const gp = controller.inputSource.gamepad;
+
+        // Thumbstick click (index 3) -> instant snap back to chair
+        if (gp.buttons && gp.buttons[3] && gp.buttons[3].pressed) {
+          if (!this._lastThumbClickTime || (Date.now() - this._lastThumbClickTime > 700)) {
+            this._lastThumbClickTime = Date.now();
+            this.triggerHaptic(controller, 0.8, 50);
+            this.recenterToChair();
+            return;
+          }
+        }
+
+        // Thumbstick axes navigation (axes[2]: horizontal X, axes[3]: vertical Z)
+        if (gp.axes && gp.axes.length >= 4) {
+          const stickX = gp.axes[2];
+          const stickZ = gp.axes[3];
+          const deadzone = 0.22;
+          const speed = 0.012;
+
+          if (Math.abs(stickX) > deadzone) {
+            this.cameraRig.position.x += stickX * speed;
+            this.cameraRig.position.x = Math.max(-0.55, Math.min(0.55, this.cameraRig.position.x));
+          }
+          if (Math.abs(stickZ) > deadzone) {
+            this.cameraRig.position.z += stickZ * speed;
+            this.cameraRig.position.z = Math.max(0.78, Math.min(1.45, this.cameraRig.position.z));
+          }
+        }
+      }
+    }
   }
 
   highlightTileOnRack(slotIndex) {
@@ -1097,7 +1255,7 @@ export class VRCardScene {
 
     for (let i = 0; i < 2; i++) {
       const controller = this.renderer.xr.getController(i);
-      this.scene.add(controller);
+      this.cameraRig.add(controller); // Attach to cameraRig so hands stay anchored to player's chair
       this.controllers.push(controller);
 
       const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1.8)]);
@@ -1107,7 +1265,7 @@ export class VRCardScene {
 
       const grip = this.renderer.xr.getControllerGrip(i);
       grip.add(controllerModelFactory.createControllerModel(grip));
-      this.scene.add(grip);
+      this.cameraRig.add(grip); // Attach to cameraRig
       this.controllerGrips.push(grip);
 
       controller.addEventListener('selectstart', () => {
@@ -1122,7 +1280,7 @@ export class VRCardScene {
       for (let i = 0; i < 2; i++) {
         const hand = this.renderer.xr.getHand(i);
         hand.add(handModelFactory.createHandModel(hand, 'mesh'));
-        this.scene.add(hand);
+        this.cameraRig.add(hand); // Attach to cameraRig
         this.hands.push(hand);
 
         hand.addEventListener('pinchstart', () => {
@@ -1157,9 +1315,10 @@ export class VRCardScene {
     this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
     this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.tempMatrix);
 
-    // 1. Buttons
-    if (this.interactive3DButtons.length > 0) {
-      const btnIntersects = this.raycaster.intersectObjects(this.interactive3DButtons, false);
+    // 1. Buttons (Dynamic VR action buttons + Permanent table controls)
+    const allButtons = [...this.interactive3DButtons, ...(this.permanentInteractiveButtons || [])];
+    if (allButtons.length > 0) {
+      const btnIntersects = this.raycaster.intersectObjects(allButtons, false);
       if (btnIntersects.length > 0) {
         this.triggerHaptic(controller, 0.4, 25);
         btnIntersects[0].object.userData.onClick();
@@ -1210,8 +1369,9 @@ export class VRCardScene {
       if (this.isVRActive) return;
       this.desktopRaycaster.setFromCamera(this.mouse, this.camera);
 
-      if (this.interactive3DButtons.length > 0) {
-        const btnIntersects = this.desktopRaycaster.intersectObjects(this.interactive3DButtons, false);
+      const allButtons = [...this.interactive3DButtons, ...(this.permanentInteractiveButtons || [])];
+      if (allButtons.length > 0) {
+        const btnIntersects = this.desktopRaycaster.intersectObjects(allButtons, false);
         if (btnIntersects.length > 0) {
           btnIntersects[0].object.userData.onClick();
           return;
@@ -1568,6 +1728,18 @@ export class VRCardScene {
   }
 
   render(time) {
+    // 0. VR Seated Auto-Calibration and Controls
+    if (this.isVRActive) {
+      if (!this.hasCalibratedVRSeat && this.camera) {
+        // Once WebXR starts reporting active tracking data, align user directly to chair
+        if (this.camera.position.y > 0.4 || Math.abs(this.camera.position.x) > 0.001 || Math.abs(this.camera.position.z) > 0.001) {
+          this.recenterToChair();
+          this.hasCalibratedVRSeat = true;
+        }
+      }
+      this.handleVRThumbstickNavigation();
+    }
+
     // 1. Run card / tile animations
     for (let i = this.animatingMeshes.length - 1; i >= 0; i--) {
       const finished = this.animatingMeshes[i].update(time);
