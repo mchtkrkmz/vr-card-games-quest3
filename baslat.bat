@@ -1,45 +1,41 @@
 @echo off
-chcp 65001 > nul
-title VR Kıraathane - Sunucu Başlatıcı
+cd /d "%~dp0"
+title VR Kiraathane - Sunucu Baslatici
 color 0A
 
 echo ================================================================
-echo   🎴 VR KIRAATHANE (OKEY & BATAK & PİŞTİ) - SUNUCU BAŞLATICI
+echo   VR KIRAATHANE (OKEY, BATAK, PISTI) - SUNUCU BASLATICI
 echo ================================================================
 echo.
 
-:: Node.js Kontrolü
 where node >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [HATA] Node.js bulunamadı! Lütfen https://nodejs.org adresinden kurun.
+    echo [HATA] Node.js bulunamadi!
+    echo Lutfen https://nodejs.org adresinden Node.js kurun.
     pause
     exit /b 1
 )
 
-:: Bağımlılıkların Kontrolü
 if not exist node_modules (
-    echo [*] Ilk kurulum yapiliyor, paketler yukleniyor (npm install)...
+    echo [*] Ilk kurulum: npm install calistiriliyor...
     call npm install
     if %errorlevel% neq 0 (
-        echo [HATA] Paketler yuklenirken hata olustu!
+        echo [HATA] npm install sirasinda bir hata olustu.
         pause
         exit /b 1
     )
-    echo [*] Kurulum tamamlandi.
-    echo.
 )
 
-echo [✓] Sunucu baslatiliyor...
-echo [ℹ] Tarayici otomatik acilacak: http://localhost:5173/
-echo [ℹ] Meta Quest 3 ayni Wi-Fi uzerinden baglanabilir: http://192.168.1.36:5173/
+echo [OK] Sunucu baslatiliyor...
 echo.
-echo [!] Sunucuyu durdurmak icin pencereyi kapatabilir veya Ctrl + C yapabilirsiniz.
+echo   Bilgisayar Tarayici:   http://localhost:5173/
+echo   Meta Quest 3 (Wi-Fi):  http://192.168.1.36:5173/
+echo.
+echo Sunucuyu durdurmak icin bu pencereyi kapatabilirsiniz.
 echo ================================================================
 echo.
 
-:: 2 saniye sonra varsayılan tarayıcıyı aç
-start "" cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:5173/"
-
-:: Vite geliştirme sunucusunu başlat (--host ile yerel ağa açık)
+start http://localhost:5173/
 call npm run dev
+
 pause
