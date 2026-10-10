@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#090c13" />
+  <meta name="description"
+    content="Meta Quest 3 WebXR Batak, Pişti, Klasik Okey ve 101 Okey Oyunları. Canlı 3D insan figürleri, otantik Türk Kıraathanesi." />
+  <title>VR 52 & 101 OKEY - Kıraathane (Meta Quest 3 & WebXR)</title>
+  <link rel="manifest" href="./manifest.json" />
+  <script type="module" crossorigin src="./assets/index-BvJl-wZQ.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-NM9HEt7u.css">
+</head>
+
+<body>
+  <!-- 3D WebGL / WebXR Viewport -->
+  <div id="canvas-container"></div>
+  <canvas id="confetti-canvas"></canvas>
+
+  <!-- 2D Screen Overlay HUD -->
+  <div id="ui-overlay">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <div class="brand-badge interactive">
+        <h1>KORKMAZ VR KIRAATHANE</h1>
+        <span class="badge-tag">QUEST 3 VR</span>
+      </div>
+
+      <!-- Center Game Status Bar -->
+      <div class="game-info-bar interactive">
+        <div class="info-item">
+          <span class="info-label">Oyun</span>
+          <span id="hud-game-name" class="info-val">Batak</span>
+        </div>
+
+        <div class="info-item" id="trump-info-container">
+          <span class="info-label" id="trump-info-label">Koz</span>
+          <span id="hud-trump" class="info-val trump-val">♠ Maça</span>
+        </div>
+
+        <div class="info-item">
+          <span class="info-label">Durum</span>
+          <span id="hud-status" class="status-banner">Dağıtılıyor...</span>
+        </div>
+      </div>
+
+      <!-- Top Right Controls -->
+      <div class="top-controls interactive">
+        <button id="btn-voice" class="glass-btn voice-btn" title="3D Mekansal Sesli Sohbet (Mikrofon)">
+          <span id="voice-icon">🎙️</span> <span id="voice-label">Sesli Sohbet</span>
+        </button>
+        <button id="btn-theme-modal" class="glass-btn theme-btn" title="Kıraathane Mekanı / Arka Plan Değiştir">
+          <span>🌆</span> Mekan
+        </button>
+        <button id="btn-multiplayer" class="glass-btn mp-btn" title="Çok Oyunculu Oda Kur / Katıl">
+          <span>🌐</span> Çok Oyunculu
+        </button>
+        <button id="btn-menu" class="glass-btn" title="Oyun Seç / Menü">
+          <span>🎮</span> Tek Kişilik
+        </button>
+        <button id="btn-ambiance" class="glass-btn" title="Kahvehane Çay/Zar Ambiyansı">
+          <span id="ambiance-icon">☕</span> Kıraathane Sesi
+        </button>
+        <button id="btn-sound" class="glass-btn" title="Ses Aç/Kapat">
+          <span id="sound-icon">🔊</span>
+        </button>
+        <button id="btn-profile" class="glass-btn profile-btn" title="Oyuncu Girişi / Hesap">
+          <span id="profile-icon">👤</span> <span id="profile-label">Giriş Yap</span>
+        </button>
+        <button id="btn-toggle-ai" class="glass-btn ai-toggle-btn" style="display:none;" title="Yapay Zeka Asistanı Aç/Kapat">
+          <span>🤖</span> <span id="ai-toggle-label">AI Asistan</span>
+        </button>
+        <button id="btn-install-pwa" class="glass-btn install-btn" style="display:none;"
+          title="Quest / WebVR Uygulaması Olarak Yükle">
+          <span>📲</span> Yükle
+        </button>
+      </div>
+    </div>
+
+    <!-- Real-time AI Game Assistant Widget (VIP Developer Access Only) -->
+    <div id="ai-coach-panel" class="ai-coach-panel interactive" style="display: none;">
+      <div class="ai-coach-header">
+        <div class="ai-coach-title">
+          <span class="ai-pulse-dot"></span>
+          <span class="ai-title-text">🤖 YAPAY ZEKA TAKTİK ASİSTANI</span>
+        </div>
+        <span class="ai-coach-badge">CANLI ANALİZ</span>
+      </div>
+      <div id="ai-coach-content" class="ai-coach-content">
+        <div class="ai-coach-tip">Oyun başladığında en avantajlı hamleler burada gösterilecek.</div>
+      </div>
+      <div id="ai-coach-actions" class="ai-coach-actions">
+        <button id="btn-apply-ai" class="glass-btn ai-action-btn">
+          <span>💡</span> Tavsiye Hamleyi Uygula
+        </button>
+      </div>
+    </div>
+
+    <!-- Center Action Popups (Bidding / Trump / Okey Draw / 101 El Aç) -->
+    <div id="action-panel" class="action-panel interactive">
+      <div id="action-title" class="action-title">Teklif Verin (İhale)</div>
+      <div id="action-buttons-container" class="action-button-row"></div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <div class="bottom-bar">
+      <!-- Live Game Feed Log -->
+      <div class="log-box interactive" id="game-log-box">
+        <div class="log-entry">Kıraathaneye hoş geldiniz! Masada yerinizi alın.</div>
+      </div>
+
+      <!-- Contextual Game Action Controls -->
+      <div class="interactive" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        
+        <!-- Okey & 101 Okey Specific Controls (Only in Okey/101) -->
+        <div id="okey-rack-controls" style="display: none; gap: 8px; align-items: center;">
+          <button id="btn-ai-sort" class="glass-btn ai-btn" style="display: none;" title="Yapay Zeka ile Perleri & Taşları En İdeal Şekilde Diz">
+            <span>🧠</span> AI Akıllı Diz
+          </button>
+          <button id="btn-sort-runs" class="glass-btn" title="Taşları Serilere ve Perlere Göre Diz (Fotoğraf Düzeni)">
+            <span>📐</span> Seri & Per Diz
+          </button>
+          <button id="btn-sort-pairs" class="glass-btn" title="Taşları Çiftlere ve Sayılara Göre Diz">
+            <span>👥</span> Çift Diz
+          </button>
+          <button id="btn-photo-demo" class="glass-btn" title="Fotoğraftaki Örnek Istaka Dizilimini Yükle" style="background: rgba(217, 119, 6, 0.25); border-color: #d97706; color: #fef08a;">
+            <span>📸</span> Fotoğraf Düzeni
+          </button>
+        </div>
+
+        <!-- Batak Specific Controls (Only in Batak) -->
+        <div id="batak-card-controls" style="display: none; gap: 8px; align-items: center;">
+          <button id="btn-sort-cards" class="glass-btn" title="Kartları Renklerine ve Büyüklüklerine Göre Sırala">
+            <span>🃏</span> Kartları Sırala
+          </button>
+        </div>
+
+        <!-- Common Game Actions -->
+        <button id="btn-new-hand" class="glass-btn primary">
+          <span>🔄</span> Yeni El Başlat
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Game Menu Modal (Single Player) -->
+  <div id="menu-modal" class="modal-overlay hidden">
+    <div class="modal-card interactive" style="max-width: 600px;">
+      <h2>VR KIRAATHANE SALONU</h2>
+      <p class="modal-desc">Oynamak istediğiniz oyunu seçin (Botlara Karşı):</p>
+
+      <div class="game-options-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 20px;">
+        <div class="game-card-btn selected" id="opt-batak">
+          <div class="game-icon">♠️</div>
+          <div class="game-name">İhaleli Batak</div>
+          <div class="game-tag">4 Kişilik • 13 Kart • Koz</div>
+        </div>
+
+        <div class="game-card-btn" id="opt-okey101">
+          <div class="game-icon">💯</div>
+          <div class="game-name">101 Okey (Yüzbir)</div>
+          <div class="game-tag">4 Kişilik • 21 Taş • 101 Barajı</div>
+        </div>
+
+        <div class="game-card-btn" id="opt-okey">
+          <div class="game-icon">🀄</div>
+          <div class="game-name">Klasik Okey</div>
+          <div class="game-tag">4 Kişilik • 3D Istaka • 106 Taş</div>
+        </div>
+
+        <div class="game-card-btn" id="opt-pisti">
+          <div class="game-icon">🃏</div>
+          <div class="game-name">Pişti</div>
+          <div class="game-tag">2-4 Kişilik • Vale Keser • Pişti 10P</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button id="btn-start-game" class="glass-btn primary" style="padding: 12px 32px; font-size: 1.1rem;">
+          Oyunu Başlat (Botlara Karşı)
+        </button>
+        <button id="btn-close-menu" class="glass-btn">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer Hub Modal (Oda Kur / Katıl) -->
+  <div id="multiplayer-modal" class="modal-overlay hidden">
+    <div class="modal-card interactive" style="max-width: 640px;">
+      <h2>🌐 ÇOK OYUNCULU KIRAATHANE</h2>
+      <p class="modal-desc">Arkadaşlarınızla aynı masaya oturun, şifreli oda kurun veya odaya katılın.</p>
+
+      <!-- MP Tabs -->
+      <div class="mp-tabs">
+        <button id="tab-create-room" class="mp-tab active">➕ Oda Kur (Host)</button>
+        <button id="tab-join-room" class="mp-tab">🔑 Odaya Katıl (Join)</button>
+      </div>
+
+      <!-- CREATE ROOM FORM -->
+      <div id="view-create-room" class="mp-form-view">
+        <!-- Game Selection -->
+        <label class="form-label">Oyun Türü Seçin:</label>
+        <div class="mp-game-selector">
+          <div class="mp-choice-btn selected" data-game="BATAK">♠️ Batak</div>
+          <div class="mp-choice-btn" data-game="OKEY101">💯 101 Okey</div>
+          <div class="mp-choice-btn" data-game="OKEY">🀄 Klasik Okey</div>
+          <div class="mp-choice-btn" data-game="PISTI">🃏 Pişti</div>
+        </div>
+
+        <!-- Max Players Selection -->
+        <label class="form-label">Masa Kapasitesi (Oyuncu Sayısı):</label>
+        <div class="mp-player-count-selector">
+          <div class="mp-count-btn" data-count="2">2 Kişilik</div>
+          <div class="mp-count-btn" data-count="3">3 Kişilik</div>
+          <div class="mp-count-btn selected" data-count="4">4 Kişilik</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+          <div>
+            <label class="form-label">Kullanıcı Adınız:</label>
+            <input type="text" id="input-create-name" class="input-field" value="Masa Sahibi" maxlength="15" />
+          </div>
+          <div>
+            <label class="form-label">Oda Parolası (İsteğe Bağlı):</label>
+            <input type="password" id="input-create-password" class="input-field" placeholder="Şifresiz (Açık Oda)"
+              maxlength="20" />
+          </div>
+        </div>
+
+        <!-- Avatar Picker -->
+        <label class="form-label">Kıraathane Avatarınızı Seçin:</label>
+        <div class="avatar-picker-grid" id="avatar-picker-create"></div>
+
+        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 18px;">
+          <button id="btn-submit-create-room" class="glass-btn primary" style="padding: 12px 36px; font-size: 1.05rem;">
+            🚀 Odayı Oluştur
+          </button>
+          <button id="btn-close-mp-modal" class="glass-btn">Vazgeç</button>
+        </div>
+      </div>
+
+      <!-- JOIN ROOM FORM -->
+      <div id="view-join-room" class="mp-form-view hidden">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label class="form-label">4 Haneli Oda Kodu:</label>
+            <input type="text" id="input-join-code" class="input-field" placeholder="Örn: AB12" maxlength="4"
+              style="text-transform: uppercase; font-size: 1.3rem; letter-spacing: 2px;" />
+          </div>
+          <div>
+            <label class="form-label">Oda Parolası (Varsa):</label>
+            <input type="password" id="input-join-password" class="input-field" placeholder="Parola" maxlength="20" />
+          </div>
+        </div>
+
+        <div>
+          <label class="form-label">Kullanıcı Adınız:</label>
+          <input type="text" id="input-join-name" class="input-field" value="Misafir Oyuncu" maxlength="15" />
+        </div>
+
+        <!-- Avatar Picker -->
+        <label class="form-label">Kıraathane Avatarınızı Seçin:</label>
+        <div class="avatar-picker-grid" id="avatar-picker-join"></div>
+
+        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 18px;">
+          <button id="btn-submit-join-room" class="glass-btn primary" style="padding: 12px 36px; font-size: 1.05rem;">
+            🔗 Odaya Bağlan
+          </button>
+          <button id="btn-close-mp-modal-2" class="glass-btn">Vazgeç</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Multiplayer Room Lobby Modal -->
+  <div id="lobby-modal" class="modal-overlay hidden">
+    <div class="modal-card interactive" style="max-width: 580px;">
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 12px;">
+        <div>
+          <h2 style="margin: 0; font-size: 1.4rem;">MASA LOBİSİ</h2>
+          <div id="lobby-room-badge"
+            style="color: var(--accent-gold); font-weight: 700; font-size: 0.95rem; margin-top: 4px;">
+            Oda Kodu: <span id="lobby-code-display"
+              style="background: rgba(56, 189, 248, 0.2); padding: 2px 8px; border-radius: 6px; color:#38bdf8;">XXXX</span>
+            <button id="btn-copy-code" class="glass-btn"
+              style="padding: 2px 8px; font-size: 0.75rem; margin-left: 6px;">Kopyala</button>
+          </div>
+        </div>
+        <div id="lobby-game-tag" class="badge-tag" style="font-size: 0.85rem; padding: 6px 14px;">101 Okey</div>
+      </div>
+
+      <p class="modal-desc" style="margin-top: 12px;">Oyuncular bekleniyor. Masa sahibi oyunu başlattığında boş kalan
+        koltuklar otomatik olarak usta botlarla doldurulur.</p>
+
+      <!-- Connected Players Slots Grid -->
+      <div id="lobby-players-grid" class="lobby-players-grid"></div>
+
+      <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
+        <button id="btn-lobby-start-game" class="glass-btn primary" style="padding: 12px 32px; font-size: 1.1rem;">
+          🎮 Oyunu Başlat
+        </button>
+        <button id="btn-lobby-leave" class="glass-btn"
+          style="background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.5);">
+          🚪 Odadan Ayrıl
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Profile & Authentication (Register / Login) Modal -->
+  <div id="auth-modal" class="modal-overlay hidden">
+    <div class="modal-card interactive" style="max-width: 440px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 12px; margin-bottom: 16px;">
+        <h2 id="auth-modal-title" style="margin: 0; font-size: 1.3rem;">OYUNCU HESABI</h2>
+        <button id="btn-close-auth-modal" class="glass-btn" style="padding: 4px 10px; font-size: 0.85rem;">✕</button>
+      </div>
+
+      <!-- VIEW 1: Logged-in Profile Card -->
+      <div id="auth-logged-in-view" class="hidden" style="text-align: center;">
+        <div id="auth-avatar-icon" style="font-size: 3.2rem; margin-bottom: 8px;">👑</div>
+        <div id="auth-user-name" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-gold);">Mücahit Korkmaz</div>
+        <div id="auth-user-email-display" style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 14px;">mchtkrkmz@gmail.com</div>
+        <div id="auth-vip-badge" class="badge-tag" style="display: inline-block; margin-bottom: 20px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 700;">
+          ✨ VIP MASTER GELİŞTİRİCİ AKTİF (AI ASİSTAN AÇIK)
+        </div>
+        <div id="auth-regular-badge" class="badge-tag hidden" style="display: inline-block; margin-bottom: 20px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6;">
+          🎮 STANDART OYUNCU HESABI
+        </div>
+        <div>
+          <button id="btn-auth-logout" class="glass-btn danger" style="width: 100%; justify-content: center; padding: 12px;">
+            🚪 Hesaptan Çıkış Yap
+          </button>
+        </div>
+      </div>
+
+      <!-- VIEW 2: Auth Forms (Register / Login Tabs) -->
+      <div id="auth-forms-container">
+        <!-- Auth Tabs -->
+        <div class="mp-tabs">
+          <button id="tab-auth-login" class="mp-tab active">Giriş Yap</button>
+          <button id="tab-auth-register" class="mp-tab">Üye Ol</button>
+        </div>
+
+        <!-- Feedback message -->
+        <div id="auth-msg" style="font-size: 0.88rem; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; display: none;"></div>
+
+        <!-- Login Form -->
+        <div id="view-auth-login">
+          <div style="margin-bottom: 14px;">
+            <label class="form-label">E-Posta Adresi</label>
+            <input type="email" id="input-login-email" class="glass-input" placeholder="ornek@gmail.com" />
+          </div>
+          <div style="margin-bottom: 18px;">
+            <label class="form-label">Şifre</label>
+            <input type="password" id="input-login-password" class="glass-input" placeholder="••••••••" />
+          </div>
+          <button id="btn-login-submit" class="glass-btn primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 1rem;">
+            🔐 Giriş Yap
+          </button>
+        </div>
+
+        <!-- Register Form -->
+        <div id="view-auth-register" class="hidden">
+          <div style="margin-bottom: 14px;">
+            <label class="form-label">Adınız ve Soyadınız</label>
+            <input type="text" id="input-reg-name" class="glass-input" placeholder="Örn: Mücahit Korkmaz" />
+          </div>
+          <div style="margin-bottom: 14px;">
+            <label class="form-label">E-Posta Adresi</label>
+            <input type="email" id="input-reg-email" class="glass-input" placeholder="ornek@gmail.com" />
+          </div>
+          <div style="margin-bottom: 18px;">
+            <label class="form-label">Şifre</label>
+            <input type="password" id="input-reg-password" class="glass-input" placeholder="En az 4 karakter" />
+          </div>
+          <button id="btn-reg-submit" class="glass-btn primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 1rem;">
+            ✨ Üyeliği Oluştur ve Başla
+          </button>
+        </div>
+      </div>
+    </div>
+  <!-- Theme / Kıraathane Environment Selector Modal -->
+  <div id="theme-modal" class="modal-overlay hidden">
+    <div class="modal-card interactive" style="max-width: 680px; width: 92%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 12px; margin-bottom: 16px;">
+        <h2 style="margin: 0; font-size: 1.3rem; display: flex; align-items: center; gap: 8px;">
+          <span>🌆</span> İSTANBUL KIRAATHANE MEKANLARI
+        </h2>
+        <button id="btn-close-theme-modal" class="glass-btn" style="padding: 4px 10px; font-size: 0.85rem;">✕</button>
+      </div>
+      <p style="font-size: 0.9rem; color: #94a3b8; margin-top: 0; margin-bottom: 16px;">
+        Oyun oynadığınız 3D VR tarihi İstanbul kıraathane atmosferini ve arka planını seçin:
+      </p>
+      <div id="theme-grid-container" class="theme-grid">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
