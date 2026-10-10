@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 
 export const OKEY_COLORS = {
-  RED: { id: 'RED', name: 'Kırmızı', hex: '#dc2626', darkHex: '#991b1b', shadow: 'rgba(153, 27, 27, 0.4)' },
-  BLACK: { id: 'BLACK', name: 'Siyah', hex: '#111827', darkHex: '#030712', shadow: 'rgba(0, 0, 0, 0.45)' },
-  BLUE: { id: 'BLUE', name: 'Mavi', hex: '#1d4ed8', darkHex: '#1e40af', shadow: 'rgba(30, 64, 175, 0.4)' },
-  YELLOW: { id: 'YELLOW', name: 'Sarı', hex: '#d97706', darkHex: '#b45309', shadow: 'rgba(180, 83, 9, 0.4)' }
+  RED: { id: 'RED', name: 'Kırmızı', hex: '#dc2626', darkHex: '#991b1b', shadow: 'rgba(220, 38, 38, 0.45)' },
+  BLACK: { id: 'BLACK', name: 'Siyah', hex: '#18181b', darkHex: '#09090b', shadow: 'rgba(24, 24, 27, 0.5)' },
+  BLUE: { id: 'BLUE', name: 'Mavi', hex: '#0284c7', darkHex: '#0369a1', shadow: 'rgba(2, 132, 199, 0.45)' },
+  YELLOW: { id: 'YELLOW', name: 'Sarı/Turuncu', hex: '#ea580c', darkHex: '#c2410c', shadow: 'rgba(234, 88, 12, 0.45)' }
 };
 
 export function createOkeyDeck() {
@@ -69,7 +69,7 @@ class OkeyTextureGenerator {
     this.backTexture = null;
   }
 
-  // Authentic Turkish Walnut Wood Grain Texture for Istakas
+  // Authentic Turkish Warm Walnut Wood Grain Texture for Istakas
   getWalnutWoodTexture() {
     if (this.walnutTexture) return this.walnutTexture;
 
@@ -80,34 +80,38 @@ class OkeyTextureGenerator {
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    // Rich warm walnut base
+    // Rich warm honey walnut base (matching reference photograph)
     const grad = ctx.createLinearGradient(0, 0, width, height);
-    grad.addColorStop(0, '#381e11');
-    grad.addColorStop(0.5, '#2e180d');
-    grad.addColorStop(1, '#241209');
+    grad.addColorStop(0, '#78350f');
+    grad.addColorStop(0.35, '#92400e');
+    grad.addColorStop(0.7, '#6b2d0c');
+    grad.addColorStop(1, '#451a03');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // Natural wavy wood grain lines
-    ctx.strokeStyle = 'rgba(74, 40, 24, 0.45)';
+    // Natural wavy horizontal wood grain lines
+    ctx.strokeStyle = 'rgba(120, 53, 15, 0.55)';
     ctx.lineWidth = 3;
-    for (let y = 0; y < height; y += 8) {
+    for (let y = 0; y < height; y += 6) {
       ctx.beginPath();
       ctx.moveTo(0, y);
-      for (let x = 0; x < width; x += 32) {
-        const ny = y + Math.sin(x * 0.03 + y * 0.02) * 6 + Math.cos(x * 0.08) * 3;
+      for (let x = 0; x < width; x += 24) {
+        const ny = y + Math.sin(x * 0.04 + y * 0.015) * 4 + Math.cos(x * 0.07) * 2;
         ctx.lineTo(x, ny);
       }
       ctx.stroke();
     }
 
-    // Dark walnut growth rings & pores
-    ctx.strokeStyle = 'rgba(15, 8, 4, 0.35)';
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i < 20; i++) {
-      const rx = Math.random() * width;
+    // Fine wood pores & grain highlights
+    ctx.strokeStyle = 'rgba(254, 215, 170, 0.18)';
+    ctx.lineWidth = 1.2;
+    for (let y = 3; y < height; y += 12) {
       ctx.beginPath();
-      ctx.ellipse(rx, height / 2, 20 + Math.random() * 40, 180 + Math.random() * 100, 0, 0, Math.PI * 2);
+      ctx.moveTo(0, y);
+      for (let x = 0; x < width; x += 32) {
+        const ny = y + Math.sin(x * 0.03) * 3;
+        ctx.lineTo(x, ny);
+      }
       ctx.stroke();
     }
 
@@ -119,7 +123,7 @@ class OkeyTextureGenerator {
     return texture;
   }
 
-  // Realistic Melamine Bone Tile Front
+  // Realistic Melamine Bone Tile Front (100% matched to attached reference photograph)
   getTileFrontTexture(tile) {
     const key = tile.isFakeOkey ? 'FAKE_OKEY' : `${tile.colorKey}_${tile.number}`;
     if (this.cache.has(key)) return this.cache.get(key);
@@ -131,24 +135,24 @@ class OkeyTextureGenerator {
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    // 1. Heavy Melamine Bone / Ivory Plastic Base with subtle radial highlight
+    // 1. Heavy Melamine Bone / Ivory Base with soft radial highlight
     const cx = width / 2;
     const cy = height / 2;
-    const radGrad = ctx.createRadialGradient(cx, cy - 60, 40, cx, cy, 380);
+    const radGrad = ctx.createRadialGradient(cx, cy - 80, 50, cx, cy, 390);
     radGrad.addColorStop(0, '#ffffff');
-    radGrad.addColorStop(0.6, '#f8f4ec');
-    radGrad.addColorStop(1, '#ede3d1');
+    radGrad.addColorStop(0.55, '#faf6ee');
+    radGrad.addColorStop(1, '#ede2cf');
     ctx.fillStyle = radGrad;
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Beveled Edge Highlight & Shadow (3D effect)
-    ctx.lineWidth = 16;
-    ctx.strokeStyle = '#e4d6c0';
-    ctx.strokeRect(10, 10, width - 20, height - 20);
+    // 2. Beveled Edge Highlight & Shadow (matching ivory tile bevel in photo)
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = '#e2d4bc';
+    ctx.strokeRect(8, 8, width - 16, height - 16);
 
     ctx.lineWidth = 4;
     ctx.strokeStyle = '#ffffff';
-    ctx.strokeRect(20, 20, width - 40, height - 40);
+    ctx.strokeRect(18, 18, width - 36, height - 36);
 
     if (tile.isFakeOkey) {
       // Golden Clover & Star Emblem for Sahte Okey
@@ -171,42 +175,57 @@ class OkeyTextureGenerator {
 
       // Label
       ctx.fillStyle = '#b45309';
-      ctx.font = 'bold 44px "Cinzel", "Segoe UI", sans-serif';
+      ctx.font = 'bold 44px "Segoe UI", sans-serif';
       ctx.fillText('SAHTE', cx, cy + 110);
       ctx.fillText('OKEY', cx, cy + 165);
     } else {
       const color = OKEY_COLORS[tile.colorKey] || OKEY_COLORS.BLACK;
 
-      // 3. Deep Debossed Colored Enamel Number (Engraved 3D feel)
+      // 3. Bold Rounded Numerical Typography (Centered in upper-mid section as in photo)
       ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-      ctx.shadowOffsetX = 3;
-      ctx.shadowOffsetY = 6;
-      ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 5;
+      ctx.shadowBlur = 6;
 
       ctx.fillStyle = color.hex;
-      ctx.font = '900 255px "Outfit", "Segoe UI", sans-serif';
+      // Bold rounded sans font matching the reference photo
+      ctx.font = '900 240px "Outfit", "Arial Rounded MT Bold", "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${tile.number}`, cx, cy - 35);
+      ctx.fillText(`${tile.number}`, cx, cy - 45);
       ctx.restore();
 
-      // Sharp crisp outline for VR clarity
+      // Crisp subtle outline for enhanced VR readability
       ctx.strokeStyle = color.darkHex;
-      ctx.lineWidth = 6;
-      ctx.strokeText(`${tile.number}`, cx, cy - 35);
+      ctx.lineWidth = 4;
+      ctx.strokeText(`${tile.number}`, cx, cy - 45);
 
-      // Traditional Crescent & Star emblem dot beneath number
+      // 4. AUTHENTIC HEART EMBLEM MEDALLION DIRECTLY UNDER NUMBER (As seen on all tiles in photo)
+      // Recessed circular well
+      const emblemY = cy + 145;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, emblemY, 44, 0, Math.PI * 2);
+      ctx.fillStyle = '#ede3d1';
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#ded0ba';
+      ctx.stroke();
+
+      // Colored Heart (Kalp) Suit Symbol inside medallion
       ctx.fillStyle = color.hex;
-      ctx.beginPath();
-      ctx.arc(cx, cy + 155, 32, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.font = 'bold 62px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('♥', cx, emblemY + 2);
 
-      // White inner crescent
-      ctx.fillStyle = '#f8f4ec';
+      // Delicate ivory center dot on heart (matching photo's heart detailing)
+      ctx.fillStyle = '#faf6ee';
       ctx.beginPath();
-      ctx.arc(cx + 8, cy + 151, 24, 0, Math.PI * 2);
+      ctx.arc(cx, emblemY + 11, 7, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -382,4 +401,192 @@ export function createIstaka3DMesh() {
   istakaGroup.add(plate);
 
   return istakaGroup;
+}
+
+// Generates the exact 15-tile demonstration hand shown in the user's reference photograph
+export function createPhotoDemoHand() {
+  const demoTiles = [
+    // Bottom Row: Run of 5 Red (1, 2, 3, 4, 5)
+    { id: 'demo_r_1', colorKey: 'RED', colorName: 'Kırmızı', colorHex: '#dc2626', number: 1, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 0 },
+    { id: 'demo_r_2', colorKey: 'RED', colorName: 'Kırmızı', colorHex: '#dc2626', number: 2, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 1 },
+    { id: 'demo_r_3', colorKey: 'RED', colorName: 'Kırmızı', colorHex: '#dc2626', number: 3, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 2 },
+    { id: 'demo_r_4', colorKey: 'RED', colorName: 'Kırmızı', colorHex: '#dc2626', number: 4, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 3 },
+    { id: 'demo_r_5', colorKey: 'RED', colorName: 'Kırmızı', colorHex: '#dc2626', number: 5, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 4 },
+
+    // Bottom Row (After gap): Set of 10s (Orange, Red, Blue)
+    { id: 'demo_y_10', colorKey: 'YELLOW', colorName: 'Sarı/Turuncu', colorHex: '#ea580c', number: 10, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 6 },
+    { id: 'demo_r_10', colorKey: 'RED', colorName: 'Kırmızı', colorHex: '#dc2626', number: 10, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 7 },
+    { id: 'demo_b_10', colorKey: 'BLUE', colorName: 'Mavi', colorHex: '#0284c7', number: 10, isFakeOkey: false, isRealOkey: false, _istakaTier: 1, _istakaSlot: 8 },
+
+    // Top Row: Set of 5s (Black, Orange, Blue)
+    { id: 'demo_k_5', colorKey: 'BLACK', colorName: 'Siyah', colorHex: '#18181b', number: 5, isFakeOkey: false, isRealOkey: false, _istakaTier: 0, _istakaSlot: 1 },
+    { id: 'demo_y_5', colorKey: 'YELLOW', colorName: 'Sarı/Turuncu', colorHex: '#ea580c', number: 5, isFakeOkey: false, isRealOkey: false, _istakaTier: 0, _istakaSlot: 2 },
+    { id: 'demo_b_5', colorKey: 'BLUE', colorName: 'Mavi', colorHex: '#0284c7', number: 5, isFakeOkey: false, isRealOkey: false, _istakaTier: 0, _istakaSlot: 3 },
+
+    // Top Row (After gap): Pair of 7s (Red, Black)
+    { id: 'demo_r_7', colorKey: 'RED', colorName: 'Kırmızı', colorHex: '#dc2626', number: 7, isFakeOkey: false, isRealOkey: false, _istakaTier: 0, _istakaSlot: 5 },
+    { id: 'demo_k_7', colorKey: 'BLACK', colorName: 'Siyah', colorHex: '#18181b', number: 7, isFakeOkey: false, isRealOkey: false, _istakaTier: 0, _istakaSlot: 6 },
+
+    // Top Row (After gap): Pair of 8s (Orange, Blue)
+    { id: 'demo_y_8', colorKey: 'YELLOW', colorName: 'Sarı/Turuncu', colorHex: '#ea580c', number: 8, isFakeOkey: false, isRealOkey: false, _istakaTier: 0, _istakaSlot: 8 },
+    { id: 'demo_b_8', colorKey: 'BLUE', colorName: 'Mavi', colorHex: '#0284c7', number: 8, isFakeOkey: false, isRealOkey: false, _istakaTier: 0, _istakaSlot: 9 }
+  ];
+
+  return demoTiles;
+}
+
+// Intelligent dual-tier Istaka slot layout algorithm with visible gaps between groups
+// Matches the visual organization shown in the user's reference photograph
+export function arrangeHandTilesOnIstaka(handTiles, forceSort = false) {
+  if (!handTiles || handTiles.length === 0) return handTiles;
+
+  // If tiles already have explicit slots and no re-sort is requested, preserve them
+  const hasExistingSlots = handTiles.every(t => typeof t._istakaSlot === 'number' && typeof t._istakaTier === 'number');
+  if (hasExistingSlots && !forceSort) {
+    return handTiles;
+  }
+
+  const okeys = handTiles.filter(t => t.isRealOkey);
+  const regularTiles = handTiles.filter(t => !t.isRealOkey);
+
+  const runs = [];
+  const sets = [];
+  const pairs = [];
+  const usedIds = new Set();
+
+  // 1. Detect Same-Color Consecutive Runs (e.g. 1-2-3-4-5 Red)
+  const colorMap = { RED: [], BLACK: [], BLUE: [], YELLOW: [] };
+  regularTiles.forEach(t => {
+    if (colorMap[t.colorKey]) colorMap[t.colorKey].push(t);
+  });
+
+  for (const cKey in colorMap) {
+    const sorted = [...colorMap[cKey]].sort((a, b) => a.number - b.number);
+    let curRun = [];
+    for (let i = 0; i < sorted.length; i++) {
+      const tile = sorted[i];
+      if (curRun.length === 0) {
+        curRun.push(tile);
+      } else {
+        const last = curRun[curRun.length - 1];
+        if (tile.number === last.number + 1) {
+          curRun.push(tile);
+        } else if (tile.number === last.number) {
+          // duplicate number in same suit, ignore for this run
+        } else {
+          if (curRun.length >= 3) {
+            runs.push([...curRun]);
+            curRun.forEach(t => usedIds.add(t.id));
+          }
+          curRun = [tile];
+        }
+      }
+    }
+    if (curRun.length >= 3) {
+      runs.push([...curRun]);
+      curRun.forEach(t => usedIds.add(t.id));
+    }
+  }
+
+  // Sort runs longest first
+  runs.sort((a, b) => b.length - a.length);
+
+  // 2. Detect Same-Number Different-Color Sets (e.g. 10-10-10 or 5-5-5)
+  const numMap = {};
+  regularTiles.forEach(t => {
+    if (!usedIds.has(t.id)) {
+      if (!numMap[t.number]) numMap[t.number] = [];
+      // avoid duplicates of same color in the set
+      if (!numMap[t.number].some(existing => existing.colorKey === t.colorKey)) {
+        numMap[t.number].push(t);
+      }
+    }
+  });
+
+  for (const num in numMap) {
+    if (numMap[num].length >= 3) {
+      sets.push([...numMap[num]]);
+      numMap[num].forEach(t => usedIds.add(t.id));
+    }
+  }
+
+  // 3. Detect Pairs (e.g. 7-7 or 8-8)
+  const pairMap = {};
+  regularTiles.forEach(t => {
+    if (!usedIds.has(t.id)) {
+      if (!pairMap[t.number]) pairMap[t.number] = [];
+      pairMap[t.number].push(t);
+    }
+  });
+
+  for (const num in pairMap) {
+    if (pairMap[num].length >= 2) {
+      const pairGroup = pairMap[num].slice(0, 2);
+      pairs.push(pairGroup);
+      pairGroup.forEach(t => usedIds.add(t.id));
+    }
+  }
+
+  // 4. Remaining Orphan / Dead Tiles
+  const orphans = regularTiles.filter(t => !usedIds.has(t.id));
+
+  // --- DUAL-SHELF SLOT DISTRIBUTION ---
+  // Lower shelf (Tier 1): Slots 0..12 (Takes longest runs and primary sets with gaps)
+  // Upper shelf (Tier 0): Slots 0..12 (Takes secondary sets, pairs, okeys, and loose tiles with gaps)
+  const maxSlots = 12;
+
+  let tier1Groups = [];
+  let tier0Groups = [];
+
+  // Bottom row gets longest runs first
+  if (runs.length > 0) {
+    tier1Groups.push(runs[0]);
+    if (sets.length > 0) {
+      tier1Groups.push(sets[0]);
+    }
+  } else if (sets.length > 0) {
+    tier1Groups.push(sets[0]);
+  }
+
+  // Remaining runs and sets go to top row
+  for (let i = 1; i < runs.length; i++) tier0Groups.push(runs[i]);
+  for (let i = (runs.length > 0 ? 1 : 1); i < sets.length; i++) tier0Groups.push(sets[i]);
+
+  // Pairs and orphans go to top row
+  pairs.forEach(p => tier0Groups.push(p));
+  if (okeys.length > 0) tier0Groups.unshift(okeys);
+  if (orphans.length > 0) {
+    // If bottom row has plenty of room, place some orphans or pairs there
+    if (tier1Groups.reduce((acc, g) => acc + g.length, 0) <= 6) {
+      tier1Groups.push(orphans);
+    } else {
+      tier0Groups.push(orphans);
+    }
+  }
+
+  // Function to assign slots along a tier with clean 1-slot gaps between groups
+  function assignTierSlots(groups, tier) {
+    const totalTiles = groups.reduce((acc, g) => acc + g.length, 0);
+    const totalGaps = Math.max(0, groups.length - 1);
+    const needed = totalTiles + totalGaps;
+    let startSlot = Math.max(0, Math.floor((maxSlots - needed) / 2));
+
+    let curSlot = startSlot;
+    groups.forEach((grp, gIdx) => {
+      grp.forEach(t => {
+        t._istakaTier = tier;
+        t._istakaSlot = Math.min(maxSlots - 1, curSlot);
+        curSlot++;
+      });
+      // 1-slot gap after each group
+      if (gIdx < groups.length - 1) {
+        curSlot++;
+      }
+    });
+  }
+
+  assignTierSlots(tier1Groups, 1); // Bottom shelf
+  assignTierSlots(tier0Groups, 0); // Top shelf
+
+  return handTiles;
 }

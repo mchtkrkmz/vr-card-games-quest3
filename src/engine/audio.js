@@ -370,20 +370,23 @@ class CardAudioEngine {
     }, 530);
   }
 
-  // --- 5. REALISTIC CARD SNAP ONTO GREEN FELT (Kağıt Çırpma / Çuha Masaya Vurma) ---
-  playCardSnap(intensity = 1.0, pan = 0) {
+  // --- 5. ULTRA-REALISTIC CARD SLAP ON TABLE (Masaya Kart Vurma / Şaklatma Sesi) ---
+  // Recreates the authentic Turkish Kahvehane card slam on a solid wooden felt table
+  playCardTableSlap(intensity = 1.0, pan = 0) {
     if (!this.ctx || !this.enabled) return;
     this.initContext();
     const t = this.ctx.currentTime;
     const panner = this.createPanner(pan);
     panner.connect(this.ctx.destination);
 
-    // Component A: Crisp Cardstock Corner Snap (Sert kart çıtlatması)
-    const snapSize = Math.floor(this.ctx.sampleRate * 0.045);
+    // --- Layer 1: Razor-Sharp Cardstock Snap ("ŞAAK!" Transient) ---
+    const snapSize = Math.floor(this.ctx.sampleRate * 0.038);
     const snapBuffer = this.ctx.createBuffer(1, snapSize, this.ctx.sampleRate);
     const snapData = snapBuffer.getChannelData(0);
     for (let i = 0; i < snapSize; i++) {
-      snapData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (snapSize * 0.18));
+      const decay = Math.exp(-i / (snapSize * 0.12));
+      const spike = i < 6 ? (1 - i / 6) * 2.2 : 0;
+      snapData[i] = ((Math.random() * 2 - 1) + spike) * decay;
     }
 
     const noiseSource = this.ctx.createBufferSource();
@@ -391,47 +394,93 @@ class CardAudioEngine {
 
     const snapFilter = this.ctx.createBiquadFilter();
     snapFilter.type = 'bandpass';
-    snapFilter.frequency.setValueAtTime(3200 + (Math.random() - 0.5) * 400, t);
-    snapFilter.Q.setValueAtTime(4.0, t);
+    snapFilter.frequency.setValueAtTime(3600 + (Math.random() - 0.5) * 450, t);
+    snapFilter.Q.setValueAtTime(3.8, t);
 
     const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.65 * intensity * this.volume, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.042);
+    noiseGain.gain.setValueAtTime(0.95 * intensity * this.volume, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.036);
 
     noiseSource.connect(snapFilter);
     snapFilter.connect(noiseGain);
     noiseGain.connect(panner);
     noiseSource.start(t);
 
-    // Component B: Card Air-Displacement Body (Kağıdın havayı yarıp esnemesi)
+    // --- Layer 2: Heavy Solid Walnut Table Body Thump ("GÜM / TOK!" Masanın İnlemesi) ---
+    const tableOsc = this.ctx.createOscillator();
+    const tableGain = this.ctx.createGain();
+    tableOsc.type = 'sine';
+    const fundamental = 145 + (Math.random() - 0.5) * 20;
+    tableOsc.frequency.setValueAtTime(fundamental, t);
+    tableOsc.frequency.exponentialRampToValueAtTime(38, t + 0.088);
+
+    tableGain.gain.setValueAtTime(0.85 * intensity * this.volume, t);
+    tableGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.092);
+
+    tableOsc.connect(tableGain);
+    tableGain.connect(panner);
+    tableOsc.start(t);
+    tableOsc.stop(t + 0.095);
+
+    // --- Layer 3: Card Mid-Body Whiplash (Plastik Kaplı Kağıt Gövdesi) ---
     const bodyOsc = this.ctx.createOscillator();
     const bodyGain = this.ctx.createGain();
-    bodyOsc.type = 'sine';
-    bodyOsc.frequency.setValueAtTime(750 + Math.random() * 100, t);
-    bodyOsc.frequency.exponentialRampToValueAtTime(220, t + 0.038);
+    bodyOsc.type = 'triangle';
+    bodyOsc.frequency.setValueAtTime(680 + (Math.random() - 0.5) * 90, t);
+    bodyOsc.frequency.exponentialRampToValueAtTime(190, t + 0.042);
 
-    bodyGain.gain.setValueAtTime(0.45 * intensity * this.volume, t);
-    bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    bodyGain.gain.setValueAtTime(0.55 * intensity * this.volume, t);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
 
     bodyOsc.connect(bodyGain);
     bodyGain.connect(panner);
     bodyOsc.start(t);
-    bodyOsc.stop(t + 0.042);
+    bodyOsc.stop(t + 0.048);
 
-    // Component C: Green Felt Table Absorption Thump (Çuha masa tok sesi)
+    // --- Layer 4: Felt Table Cushion Air Slap (Yeşil Çuha Hava Sıkışması) ---
+    const feltFilter = this.ctx.createBiquadFilter();
+    feltFilter.type = 'lowpass';
+    feltFilter.frequency.setValueAtTime(950, t);
+    feltFilter.frequency.linearRampToValueAtTime(250, t + 0.06);
+
     const feltOsc = this.ctx.createOscillator();
+    feltOsc.type = 'sawtooth';
+    feltOsc.frequency.setValueAtTime(220, t);
+    feltOsc.frequency.exponentialRampToValueAtTime(65, t + 0.055);
+
     const feltGain = this.ctx.createGain();
-    feltOsc.type = 'sine';
-    feltOsc.frequency.setValueAtTime(130 + Math.random() * 20, t);
-    feltOsc.frequency.exponentialRampToValueAtTime(42, t + 0.065);
+    feltGain.gain.setValueAtTime(0.35 * intensity * this.volume, t);
+    feltGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.058);
 
-    feltGain.gain.setValueAtTime(0.4 * intensity * this.volume, t);
-    feltGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.068);
-
-    feltOsc.connect(feltGain);
+    feltOsc.connect(feltFilter);
+    feltFilter.connect(feltGain);
     feltGain.connect(panner);
     feltOsc.start(t);
-    feltOsc.stop(t + 0.072);
+    feltOsc.stop(t + 0.062);
+
+    // --- Layer 5: Card Corner Settling Micro-Rebound (Kartın Masaya Oturma İkinci Çıtı) ---
+    setTimeout(() => {
+      if (!this.ctx) return;
+      const t2 = this.ctx.currentTime;
+      const bOsc = this.ctx.createOscillator();
+      const bGain = this.ctx.createGain();
+      bOsc.type = 'sine';
+      bOsc.frequency.setValueAtTime(1400 + Math.random() * 200, t2);
+      bOsc.frequency.exponentialRampToValueAtTime(450, t2 + 0.016);
+
+      bGain.gain.setValueAtTime(0.28 * intensity * this.volume, t2);
+      bGain.gain.exponentialRampToValueAtTime(0.0001, t2 + 0.016);
+
+      bOsc.connect(bGain);
+      bGain.connect(panner);
+      bOsc.start(t2);
+      bOsc.stop(t2 + 0.018);
+    }, 14);
+  }
+
+  // Backward-compatible alias for table slap
+  playCardSnap(intensity = 1.0, pan = 0) {
+    this.playCardTableSlap(intensity, pan);
   }
 
   // --- 6. CARD DEALING WHOOSH (Desteden Kağıt Çekme / Havada Süzülme) ---

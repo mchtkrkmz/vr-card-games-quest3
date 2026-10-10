@@ -11,6 +11,7 @@ import { networkManager } from './engine/network.js';
 import { AVAILABLE_AVATARS } from './vr/avatars.js';
 import { spatialVoice } from './engine/voiceChat.js';
 import { userDb } from './engine/db/userDatabase.js';
+import { arrangeHandTilesOnIstaka, createPhotoDemoHand } from './engine/okey/tiles.js';
 
 class AppManager {
   constructor() {
@@ -67,6 +68,7 @@ class AppManager {
       btnAISort: document.getElementById('btn-ai-sort'),
       btnSortRuns: document.getElementById('btn-sort-runs'),
       btnSortPairs: document.getElementById('btn-sort-pairs'),
+      btnPhotoDemo: document.getElementById('btn-photo-demo'),
 
       // Multiplayer Elements
       multiplayerModal: document.getElementById('multiplayer-modal'),
@@ -149,6 +151,7 @@ class AppManager {
     this.scene.onSortAiCallback = () => this.sortHandAI();
     this.scene.onSortRunsCallback = () => this.sortHandRuns();
     this.scene.onSortPairsCallback = () => this.sortHandPairs();
+    this.scene.onSortPhotoDemoCallback = () => this.loadPhotoDemoIstaka();
     this.scene.onSortCardsCallback = () => this.sortBatakCards();
     this.scene.onDrawDiscardCallback = () => {
       if (this.gameEngine && typeof this.gameEngine.drawFromDiscard === 'function') {
@@ -428,6 +431,12 @@ class AppManager {
       this.dom.btnSortPairs.addEventListener('click', () => {
         soundFx.playButtonClick();
         this.sortHandPairs();
+      });
+    }
+    if (this.dom.btnPhotoDemo) {
+      this.dom.btnPhotoDemo.addEventListener('click', () => {
+        soundFx.playButtonClick();
+        this.loadPhotoDemoIstaka();
       });
     }
 
@@ -1370,21 +1379,27 @@ class AppManager {
     this.appendLog('🧠 Yapay Zeka taşları hazır perler ve bekleyen gruplara göre akıllıca dizdi.');
   }
 
+  loadPhotoDemoIstaka() {
+    if (!this.gameEngine) return;
+    const demoHand = createPhotoDemoHand();
+    this.gameEngine.players[0].hand = demoHand;
+    this.selectedTileIndex = -1;
+    this.scene.renderPlayerIstaka(demoHand);
+    soundFx.playOkeyTilesShuffle();
+    this.appendLog('📸 Fotoğraftaki 15 taşlık örnek ıstaka dizilimi (seriler, perler ve çiftler) başarıyla yüklendi!');
+    this.updateAIAdvisor();
+  }
+
   sortHandRuns() {
     if (!this.gameEngine) return;
     const player = this.gameEngine.players[0];
-    const colorOrder = { 'RED': 0, 'BLACK': 1, 'BLUE': 2, 'YELLOW': 3, 'FAKE': 4 };
-    player.hand.sort((a, b) => {
-      if (a.isRealOkey) return -1;
-      if (b.isRealOkey) return 1;
-      const cA = colorOrder[a.colorKey] ?? 0;
-      const cB = colorOrder[b.colorKey] ?? 0;
-      if (cA !== cB) return cA - cB;
-      return a.number - b.number;
-    });
+    arrangeHandTilesOnIstaka(player.hand, true);
+    this.selectedTileIndex = -1;
+    this.scene.renderPlayerIstaka(player.hand);
     soundFx.playOkeyTileSlide();
+    soundFx.playOkeyStoneClack(0.8);
     this.updateAIAdvisor();
-    this.appendLog('Taşlar serilere göre dizildi.');
+    this.appendLog('📐 Taşlar serilere ve perlere göre fotoğraftaki gibi gruplanarak dizildi.');
   }
 
   sortHandPairs() {
@@ -1396,9 +1411,46 @@ class AppManager {
       if (a.number !== b.number) return a.number - b.number;
       return a.colorKey.localeCompare(b.colorKey);
     });
+
+    const pairs = [];
+    const used = new Set();
+    for (let i = 0; i < player.hand.length - 1; i++) {
+      if (!used.has(i) && !used.has(i + 1) && player.hand[i].number === player.hand[i + 1].number) {
+        pairs.push([player.hand[i], player.hand[i + 1]]);
+        used.add(i);
+        used.add(i + 1);
+      }
+    }
+    const leftovers = player.hand.filter((_, idx) => !used.has(idx));
+    let t0Slot = 1;
+    let t1Slot = 1;
+    pairs.forEach((pair, pIdx) => {
+      const tier = pIdx % 2;
+      let slot = tier === 0 ? t0Slot : t1Slot;
+      if (slot <= 10) {
+        pair[0]._istakaTier = tier;
+        pair[0]._istakaSlot = slot;
+        pair[1]._istakaTier = tier;
+        pair[1]._istakaSlot = slot + 1;
+        if (tier === 0) t0Slot += 3; // 1-slot gap
+        else t1Slot += 3;
+      }
+    });
+    leftovers.forEach((tile) => {
+      if (t0Slot <= 11) {
+        tile._istakaTier = 0;
+        tile._istakaSlot = t0Slot++;
+      } else if (t1Slot <= 11) {
+        tile._istakaTier = 1;
+        tile._istakaSlot = t1Slot++;
+      }
+    });
+
+    this.selectedTileIndex = -1;
+    this.scene.renderPlayerIstaka(player.hand);
     soundFx.playOkeyTileSlide();
     this.updateAIAdvisor();
-    this.appendLog('Taşlar sayılara/çiftlere göre dizildi.');
+    this.appendLog('👥 Taşlar sayılara ve çiftlere göre aralıklı dizildi.');
   }
 
   handleUserTileSelected(tile) {
@@ -1433,7 +1485,16 @@ class AppManager {
       player.hand[prevIdx] = player.hand[targetIdx];
       player.hand[targetIdx] = temp;
 
+      // Swap physical rack coordinates so tiles switch places seamlessly
+      const tSlot = player.hand[prevIdx]._istakaSlot;
+      const tTier = player.hand[prevIdx]._istakaTier;
+      player.hand[prevIdx]._istakaSlot = player.hand[targetIdx]._istakaSlot;
+      player.hand[prevIdx]._istakaTier = player.hand[targetIdx]._istakaTier;
+      player.hand[targetIdx]._istakaSlot = tSlot;
+      player.hand[targetIdx]._istakaTier = tTier;
+
       this.selectedTileIndex = -1;
+      this.scene.renderPlayerIstaka(player.hand);
       soundFx.playOkeyTileSlide();
       soundFx.playOkeyStoneClack(0.7);
       this.updateAIAdvisor();

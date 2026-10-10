@@ -3,7 +3,7 @@ import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
 import { XRHandModelFactory } from 'three/examples/jsm/webxr/XRHandModelFactory.js';
 import { createCard3DMesh, SUITS } from '../engine/cards.js';
-import { createOkeyTile3DMesh, createIstaka3DMesh, OKEY_COLORS } from '../engine/okey/tiles.js';
+import { createOkeyTile3DMesh, createIstaka3DMesh, OKEY_COLORS, arrangeHandTilesOnIstaka, createPhotoDemoHand } from '../engine/okey/tiles.js';
 import { avatarBuilder, createAuthenticTeaGlass, createTurkishCoffeeCup, createOttomanNargile } from './avatars.js';
 import { soundFx } from '../engine/audio.js';
 import { spatialVoice } from '../engine/voiceChat.js';
@@ -192,8 +192,12 @@ export class VRCardScene {
       this.hasCalibratedVRSeat = false;
       soundFx.initContext();
 
-      // Immediately place camera rig at the player's chair (Z = 1.05m)
-      this.cameraRig.position.set(0, 0, 1.05);
+      // Zero out local desktop camera offset so it doesn't contaminate WebXR tracking space
+      this.camera.position.set(0, 0, 0);
+      this.camera.rotation.set(0, 0, 0);
+
+      // Immediately place camera rig precisely at the player's seat at the table edge (Z = 0.98m)
+      this.cameraRig.position.set(0, 0, 0.98);
 
       // Listen for Meta Quest OS recenter (holding Meta button on right controller)
       const refSpace = this.renderer.xr.getReferenceSpace();
@@ -684,14 +688,14 @@ export class VRCardScene {
 
     // Player Hand Group (Natural position in lower foreground right at player's table side)
     this.playerHandGroup = new THREE.Group();
-    this.playerHandGroup.position.set(0, tableHeight + 0.048, 0.54);
+    this.playerHandGroup.position.set(0, tableHeight + 0.048, 0.60);
     this.playerHandGroup.rotation.x = -Math.PI / 4.4;
     this.scene.add(this.playerHandGroup);
 
-    // Player 3D Istaka (Tilted and positioned cleanly in player's foreground)
+    // Player 3D Istaka (Tilted and positioned cleanly in player's foreground, matching reference photo)
     this.playerIstakaGroup = new THREE.Group();
-    this.playerIstakaGroup.position.set(0, tableHeight + 0.038, 0.50);
-    this.playerIstakaGroup.rotation.x = -Math.PI / 5.2;
+    this.playerIstakaGroup.position.set(0, tableHeight + 0.005, 0.68);
+    this.playerIstakaGroup.rotation.x = -Math.PI / 14;
     const playerRackMesh = createIstaka3DMesh();
     this.playerIstakaGroup.add(playerRackMesh);
     this.playerIstakaGroup.visible = false;
@@ -703,9 +707,9 @@ export class VRCardScene {
     this.discardGroups = [];
 
     const oppPositions = [
-      { pos: [0.72, tableHeight + 0.08, 0], rotY: -Math.PI / 2 },
-      { pos: [0, tableHeight + 0.08, -0.72], rotY: Math.PI },
-      { pos: [-0.72, tableHeight + 0.08, 0], rotY: Math.PI / 2 }
+      { pos: [0.68, tableHeight + 0.005, 0], rotY: -Math.PI / 2 },
+      { pos: [0, tableHeight + 0.005, -0.68], rotY: Math.PI },
+      { pos: [-0.68, tableHeight + 0.005, 0], rotY: Math.PI / 2 }
     ];
 
     oppPositions.forEach((opp) => {
@@ -718,7 +722,6 @@ export class VRCardScene {
       const ig = new THREE.Group();
       ig.position.set(...opp.pos);
       ig.rotation.y = opp.rotY;
-      ig.position.y = tableHeight + 0.02;
       const oppRack = createIstaka3DMesh();
       ig.add(oppRack);
       ig.visible = false;
@@ -791,9 +794,9 @@ export class VRCardScene {
     if (this.playerChair) {
       this.scene.remove(this.playerChair);
     }
-    // Authentic Kıraathane Chair for Local Player (Seat 0: X=0, Z=1.05m, facing table)
+    // Authentic Kıraathane Chair for Local Player (Seat 0: X=0, Z=1.00m, facing table)
     this.playerChair = avatarBuilder.createCafeChair();
-    this.playerChair.position.set(0, 0, 1.05);
+    this.playerChair.position.set(0, 0, 1.00);
     this.playerChair.rotation.y = Math.PI; // Face forward (-Z) towards table
 
     // Deluxe Kahvehane emerald green felt cushion for player's comfort
@@ -910,30 +913,33 @@ export class VRCardScene {
 
     const dockWoodMat = new THREE.MeshStandardMaterial({ color: 0x241108, roughness: 0.35, metalness: 0.2 });
 
-    // 1. OKEY QUICK SORT DOCK (🧠 Akıllı Diz | 📐 Seri Diz | 👥 Çift Diz)
+    // 1. OKEY QUICK SORT DOCK (🧠 Akıllı Diz | 📐 Seri & Per Diz | 👥 Çift Diz | 📸 Fotoğraf Düzeni)
     this.okeyQuickSortGroup = new THREE.Group();
-    this.okeyQuickSortGroup.position.set(0, tableHeight + 0.012, 0.70);
+    this.okeyQuickSortGroup.position.set(0, tableHeight + 0.012, 0.81);
     this.okeyQuickSortGroup.rotation.x = -Math.PI / 4.4;
 
-    const okeyDockGeo = new THREE.BoxGeometry(0.48, 0.010, 0.075);
+    const okeyDockGeo = new THREE.BoxGeometry(0.56, 0.010, 0.075);
     const okeyDockBase = new THREE.Mesh(okeyDockGeo, dockWoodMat);
     this.okeyQuickSortGroup.add(okeyDockBase);
 
-    const btnAi = createDockButton('🧠 Akıllı Diz', -0.15, 0.007, 0, 0.13, 0.046, '#059669', () => {
+    const btnAi = createDockButton('🧠 Akıllı Diz', -0.21, 0.007, 0, 0.12, 0.046, '#059669', () => {
       if (this.onSortAiCallback) this.onSortAiCallback();
     });
-    const btnRuns = createDockButton('📐 Seri Diz', 0.0, 0.007, 0, 0.13, 0.046, '#2563eb', () => {
+    const btnRuns = createDockButton('📐 Seri Diz', -0.07, 0.007, 0, 0.12, 0.046, '#2563eb', () => {
       if (this.onSortRunsCallback) this.onSortRunsCallback();
     });
-    const btnPairs = createDockButton('👥 Çift Diz', 0.15, 0.007, 0, 0.13, 0.046, '#7c3aed', () => {
+    const btnPairs = createDockButton('👥 Çift Diz', 0.07, 0.007, 0, 0.12, 0.046, '#7c3aed', () => {
       if (this.onSortPairsCallback) this.onSortPairsCallback();
     });
-    this.okeyQuickSortGroup.add(btnAi, btnRuns, btnPairs);
+    const btnPhotoDemo = createDockButton('📸 Fotoğraf Düzeni', 0.21, 0.007, 0, 0.13, 0.046, '#d97706', () => {
+      if (this.onSortPhotoDemoCallback) this.onSortPhotoDemoCallback();
+    });
+    this.okeyQuickSortGroup.add(btnAi, btnRuns, btnPairs, btnPhotoDemo);
     this.tableGroup.add(this.okeyQuickSortGroup);
 
     // 2. CARD GAMES QUICK SORT DOCK (🎴 Renklere Göre Sırala | 💡 AI Hamlesi)
     this.cardQuickSortGroup = new THREE.Group();
-    this.cardQuickSortGroup.position.set(0, tableHeight + 0.012, 0.70);
+    this.cardQuickSortGroup.position.set(0, tableHeight + 0.012, 0.76);
     this.cardQuickSortGroup.rotation.x = -Math.PI / 4.4;
 
     const cardDockGeo = new THREE.BoxGeometry(0.42, 0.010, 0.075);
@@ -956,23 +962,30 @@ export class VRCardScene {
 
   recenterToChair() {
     const targetSeatX = 0;
-    const targetSeatZ = 1.05; // Exact position in front of player's chair
+    const targetSeatZ = 0.98; // Exact position directly in front of player's table edge (masanın kenarı)
 
-    if (this.isVRActive && this.camera) {
-      // In Three.js WebXR, camera.position holds the headset's physical offset relative to guardian origin
-      const hx = this.camera.position.x || 0;
-      const hz = this.camera.position.z || 0;
+    if (this.isVRActive) {
+      // In Three.js WebXR, query renderer.xr.getCamera() to get true physical headset offset
+      const xrCamera = this.renderer.xr.getCamera();
+      let hx = 0;
+      let hz = 0;
+      let hy = 1.2;
 
-      // Position cameraRig so user's head in world space sits precisely at (0, y, 1.05)
+      if (xrCamera && xrCamera.position) {
+        hx = xrCamera.position.x || 0;
+        hz = xrCamera.position.z || 0;
+        hy = xrCamera.position.y || 1.2;
+      }
+
+      // Position cameraRig so user's head in world space sits precisely at the table edge (0, y, 0.98)
       this.cameraRig.position.x = targetSeatX - hx;
       this.cameraRig.position.z = targetSeatZ - hz;
 
       // Seated height comfort:
-      // If user is standing physically in room (eye height > 1.45m), lower rig so they sit naturally at table (~1.22m)
+      // If user is standing physically in room (eye height > 1.45m), lower rig so they sit naturally at table (~1.20m)
       // If user is already sitting down physically, keep rig Y = 0 to preserve real floor tracking
-      const hy = this.camera.position.y || 1.2;
       if (hy > 1.45) {
-        this.cameraRig.position.y = 1.22 - hy;
+        this.cameraRig.position.y = 1.20 - hy;
       } else {
         this.cameraRig.position.y = 0;
       }
@@ -1865,32 +1878,32 @@ export class VRCardScene {
     }
     if (!handTiles || handTiles.length === 0) return;
 
-    const total = handTiles.length;
-    const maxPerTier = total > 15 ? 11 : 12; // 101 Okey has up to 21-22 tiles, classic has 14-15
-    const slotSpacing = 0.045; // 4.5cm slot spacing ensures clear separation
+    // Use intelligent dual-tier slot layout with gaps between groups (matching user reference photo)
+    arrangeHandTilesOnIstaka(handTiles, false);
+
+    const slotSpacing = 0.042; // 4.2cm slot spacing ensures clear separation
+    const maxSlots = 12;
 
     handTiles.forEach((tile, idx) => {
       const isSelected = this.selectedTileIndex === idx;
       const isRecommended = recommendedIndex === idx;
       const mesh = createOkeyTile3DMesh(tile, isSelected, isRecommended);
 
-      const tier = idx < maxPerTier ? 0 : 1; // 0 = upper shelf, 1 = lower shelf
-      const col = idx % maxPerTier;
-      const tilesInThisTier = tier === 0 ? Math.min(total, maxPerTier) : (total - maxPerTier);
+      // Use assigned dual-tier slot coordinates
+      const tier = typeof tile._istakaTier === 'number' ? tile._istakaTier : 0;
+      const slot = typeof tile._istakaSlot === 'number' ? tile._istakaSlot : (idx % maxSlots);
 
-      // Centered placement along the shelf
-      const x = (col - (tilesInThisTier - 1) / 2) * slotSpacing;
+      // Centered placement along the rack shelf
+      const x = (slot - (maxSlots - 1) / 2) * slotSpacing;
 
-      // High-clearance stepped shelf heights:
-      // Upper shelf sits higher and recessed: y = 0.092, z = -0.022
-      // Lower shelf sits forward: y = 0.036, z = 0.038
-      // Lower tile top at 0.0856m is strictly below upper shelf base at 0.092m! Zero occlusion!
-      let y = tier === 0 ? 0.092 : 0.036;
-      let z = tier === 0 ? -0.022 : 0.038;
+      // Tier 0 (upper shelf): elevated & recessed (y = 0.088, z = -0.024)
+      // Tier 1 (lower shelf): forward & lowered (y = 0.038, z = 0.034)
+      let y = tier === 0 ? 0.088 : 0.038;
+      let z = tier === 0 ? -0.024 : 0.034;
 
       if (isSelected) {
-        y += 0.020;
-        z -= 0.010;
+        y += 0.022;
+        z -= 0.012;
       } else if (isRecommended) {
         y += 0.014;
         z -= 0.008;
@@ -1898,14 +1911,16 @@ export class VRCardScene {
 
       mesh.position.set(x, y, z);
       // Inclined backwards resting naturally against the rack backboard
-      mesh.rotation.x = Math.PI / 6.5;
+      mesh.rotation.x = Math.PI / 8;
 
       mesh.userData = {
         tile,
         tileIndex: idx,
         isOkeyTile: true,
-        baseY: tier === 0 ? 0.092 : 0.036,
-        baseZ: tier === 0 ? -0.022 : 0.038
+        tier,
+        slot,
+        baseY: tier === 0 ? 0.088 : 0.038,
+        baseZ: tier === 0 ? -0.024 : 0.034
       };
 
       this.playerIstakaGroup.add(mesh);
@@ -1920,25 +1935,8 @@ export class VRCardScene {
       const p = players[seat];
       if (!p || !p.hand) continue;
 
-      const count = p.hand.length;
-      const maxPerTier = count > 15 ? 11 : 12;
-      const slotSpacing = 0.045;
-
-      for (let i = 0; i < count; i++) {
-        const dummyTile = { colorKey: 'RED', number: 1, isFakeOkey: false };
-        const mesh = createOkeyTile3DMesh(dummyTile);
-        const tier = i < maxPerTier ? 0 : 1;
-        const col = i % maxPerTier;
-        const tilesInTier = tier === 0 ? Math.min(count, maxPerTier) : (count - maxPerTier);
-
-        mesh.position.set(
-          (col - (tilesInTier - 1) / 2) * slotSpacing,
-          tier === 0 ? 0.092 : 0.036,
-          tier === 0 ? -0.022 : 0.038
-        );
-        mesh.rotation.x = Math.PI; // Face-down facing towards opponents
-        oppIstaka.add(mesh);
-      }
+      // Opponents' racks face the opponents - from table center & player's view,
+      // only the authentic wooden backboard and dark end caps are shown (exactly as in the reference photograph)
     }
   }
 
@@ -2107,9 +2105,10 @@ export class VRCardScene {
   render(time) {
     // 0. VR Seated Auto-Calibration and Controls
     if (this.isVRActive) {
-      if (!this.hasCalibratedVRSeat && this.camera) {
-        // Once WebXR starts reporting active tracking data, align user directly to chair
-        if (this.camera.position.y > 0.4 || Math.abs(this.camera.position.x) > 0.001 || Math.abs(this.camera.position.z) > 0.001) {
+      if (!this.hasCalibratedVRSeat) {
+        const xrCam = this.renderer.xr.getCamera();
+        // Once WebXR active tracking starts reporting, calibrate user to table edge once
+        if (xrCam && (xrCam.position.y > 0.3 || Math.abs(xrCam.position.z) > 0.04)) {
           this.recenterToChair();
           this.hasCalibratedVRSeat = true;
         }
