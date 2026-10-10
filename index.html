@@ -9,7 +9,7 @@
     content="Meta Quest 3 WebXR Batak, Pişti, Klasik Okey ve 101 Okey Oyunları. Canlı 3D insan figürleri, otantik Türk Kıraathanesi." />
   <title>VR 52 & 101 OKEY - Kıraathane (Meta Quest 3 & WebXR)</title>
   <link rel="manifest" href="./manifest.json" />
-  <script type="module" crossorigin src="./assets/index-BvJl-wZQ.js"></script>
+  <script type="module" crossorigin src="./assets/index-TNydc-kg.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-NM9HEt7u.css">
 </head>
 
@@ -395,6 +395,28 @@
       </p>
       <div id="theme-grid-container" class="theme-grid">
         <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Over / Match Finished Modal -->
+  <div id="game-over-modal" class="modal-overlay hidden" style="z-index: 999999;">
+    <div class="modal-card interactive" style="max-width: 480px; text-align: center; border: 2px solid #fbbf24; box-shadow: 0 0 45px rgba(245, 158, 11, 0.45);">
+      <div style="font-size: 3.5rem; margin-bottom: 4px;" id="game-over-icon">🏆</div>
+      <h2 style="font-size: 1.8rem; margin: 0 0 6px 0; color: #fef08a; letter-spacing: 1px;" id="game-over-title">OYUN BİTTİ!</h2>
+      <p id="game-over-winner" style="font-size: 1.25rem; font-weight: bold; color: #6ee7b7; margin: 0 0 8px 0;">Kazanan: Oyuncu (Siz)</p>
+      <p id="game-over-summary" class="modal-desc" style="margin-bottom: 24px; color: #cbd5e1;">Tebrikler! Maçı başarıyla tamamladınız.</p>
+      
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="btn-game-over-restart" class="action-btn" style="width: 100%; justify-content: center; font-size: 1.05rem; padding: 14px; background: linear-gradient(135deg, #059669, #10b981); border-radius: 14px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
+          <span>🔄</span> Tekrar Oyna (Yeniden Başlat)
+        </button>
+        <button id="btn-game-over-exit-vr" class="glass-btn" style="width: 100%; justify-content: center; font-size: 1rem; padding: 12px; background: rgba(220, 38, 38, 0.25); border: 1.5px solid #ef4444; color: #fca5a5; border-radius: 14px;">
+          <span>🚪</span> VR'dan Çıkış Yap (WebXR Kapat)
+        </button>
+        <button id="btn-game-over-menu" class="glass-btn" style="width: 100%; justify-content: center; font-size: 1rem; padding: 12px; border-radius: 14px;">
+          <span>🏠</span> Ana Menüye Dön
+        </button>
       </div>
     </div>
   </div>
