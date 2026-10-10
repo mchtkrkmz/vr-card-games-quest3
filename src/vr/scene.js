@@ -214,6 +214,7 @@ export class VRCardScene {
       this.cameraRig.position.set(0, 0, 0);
       this.camera.position.set(0, 1.25, 0.95);
       this.camera.lookAt(0, 0.85, 0);
+      this.hideVRGameOverDialog();
     });
 
     this.buildLighting();
@@ -854,7 +855,49 @@ export class VRCardScene {
         this.recenterToChair();
       }
     };
-    this.permanentInteractiveButtons = [btnMesh];
+
+    // Authentic Brass Plaque on Player's Table Right: "🚪 VR'dan Çık" (Exit WebXR VR Anytime)
+    const exitPlaqueGeo = new THREE.BoxGeometry(0.24, 0.015, 0.10);
+    const exitPlaque = new THREE.Mesh(exitPlaqueGeo, brassMat);
+    exitPlaque.position.set(0.52, tableHeight + 0.008, 0.64);
+    exitPlaque.rotation.y = Math.PI / 7;
+    this.tableGroup.add(exitPlaque);
+
+    const exitCanvas = document.createElement('canvas');
+    exitCanvas.width = 256;
+    exitCanvas.height = 128;
+    const exitCtx = exitCanvas.getContext('2d');
+    exitCtx.fillStyle = '#1e293b';
+    exitCtx.roundRect(6, 6, 244, 116, 16);
+    exitCtx.fill();
+    exitCtx.lineWidth = 6;
+    exitCtx.strokeStyle = '#ef4444';
+    exitCtx.stroke();
+
+    exitCtx.fillStyle = '#fca5a5';
+    exitCtx.font = 'bold 26px "Segoe UI", sans-serif';
+    exitCtx.textAlign = 'center';
+    exitCtx.textBaseline = 'middle';
+    exitCtx.fillText('🚪 VR\'dan Çık', 128, 64);
+
+    const exitTex = new THREE.CanvasTexture(exitCanvas);
+    const exitMat = new THREE.MeshBasicMaterial({ map: exitTex });
+    const exitBtnGeo = new THREE.PlaneGeometry(0.22, 0.088);
+    const exitBtnMesh = new THREE.Mesh(exitBtnGeo, exitMat);
+    exitBtnMesh.position.set(0, 0.009, 0);
+    exitBtnMesh.rotation.x = -Math.PI / 2;
+    exitPlaque.add(exitBtnMesh);
+
+    exitBtnMesh.userData = {
+      isButton: true,
+      label: 'exit_vr',
+      onClick: () => {
+        soundFx.playButtonClick();
+        this.exitVR();
+      }
+    };
+
+    this.permanentInteractiveButtons = [btnMesh, exitBtnMesh];
     this.buildVRQuickSortPanels();
   }
 
@@ -1026,6 +1069,139 @@ export class VRCardScene {
           }
         }
       }
+    }
+  }
+
+  exitVR() {
+    soundFx.playButtonClick();
+    if (this.renderer && this.renderer.xr) {
+      const session = this.renderer.xr.getSession();
+      if (session) {
+        session.end().catch(err => console.warn('XR session end error:', err));
+      }
+    }
+  }
+
+  showVRGameOverDialog(options = {}) {
+    this.hideVRGameOverDialog();
+
+    this.vrGameOverGroup = new THREE.Group();
+    this.vrGameOverGroup.position.set(0, 1.06, 0.36);
+    this.vrGameOverGroup.rotation.x = -Math.PI / 10;
+
+    const width = 0.62;
+    const height = 0.34;
+
+    // 1. Decorative Panel Frame with Canvas Texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 280;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 0, 280);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(0.5, '#1e293b');
+    grad.addColorStop(1, '#020617');
+    ctx.fillStyle = grad;
+    ctx.roundRect(8, 8, 496, 264, 22);
+    ctx.fill();
+
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#f59e0b';
+    ctx.stroke();
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 36px "Outfit", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏆 OYUN BİTTİ!', 256, 52);
+
+    ctx.fillStyle = '#6ee7b7';
+    ctx.font = 'bold 28px "Outfit", "Segoe UI", sans-serif';
+    ctx.fillText(`👑 Kazanan: ${options.winnerName || 'Oyuncu'}`, 256, 98);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '22px "Segoe UI", sans-serif';
+    ctx.fillText(options.scoreText || 'Maç tamamlandı!', 256, 140);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 8;
+
+    const panelGeo = new THREE.BoxGeometry(width, height, 0.012);
+    const panelMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.25,
+      metalness: 0.15
+    });
+    const panelMesh = new THREE.Mesh(panelGeo, panelMat);
+    this.vrGameOverGroup.add(panelMesh);
+
+    // 2. Interactive 3D Action Buttons
+    const createDialogButton = (label, x, y, color, onClick) => {
+      const btnCanvas = document.createElement('canvas');
+      btnCanvas.width = 256;
+      btnCanvas.height = 100;
+      const bCtx = btnCanvas.getContext('2d');
+
+      bCtx.fillStyle = color;
+      bCtx.roundRect(6, 6, 244, 88, 16);
+      bCtx.fill();
+      bCtx.lineWidth = 5;
+      bCtx.strokeStyle = '#ffffff';
+      bCtx.stroke();
+
+      bCtx.fillStyle = '#ffffff';
+      bCtx.font = 'bold 26px "Outfit", "Segoe UI", sans-serif';
+      bCtx.textAlign = 'center';
+      bCtx.textBaseline = 'middle';
+      bCtx.fillText(label, 128, 50);
+
+      const bTex = new THREE.CanvasTexture(btnCanvas);
+      const bMat = new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.3, metalness: 0.1 });
+      const bGeo = new THREE.BoxGeometry(0.18, 0.062, 0.015);
+      const bMesh = new THREE.Mesh(bGeo, bMat);
+      bMesh.position.set(x, y, 0.014);
+
+      bMesh.userData = {
+        isButton: true,
+        label,
+        onClick: () => {
+          soundFx.playButtonClick();
+          if (onClick) onClick();
+        }
+      };
+
+      this.vrGameOverGroup.add(bMesh);
+      this.interactive3DButtons.push(bMesh);
+      return bMesh;
+    };
+
+    // Button 1: 🔄 Tekrar Oyna
+    createDialogButton('🔄 Tekrar Oyna', -0.19, -0.09, '#059669', () => {
+      this.hideVRGameOverDialog();
+      if (options.onPlayAgain) options.onPlayAgain();
+    });
+
+    // Button 2: 🚪 VR'dan Çık
+    createDialogButton('🚪 VR\'dan Çık', 0, -0.09, '#dc2626', () => {
+      this.hideVRGameOverDialog();
+      this.exitVR();
+      if (options.onExitVR) options.onExitVR();
+    });
+
+    // Button 3: 🏠 Ana Menü
+    createDialogButton('🏠 Ana Menü', 0.19, -0.09, '#2563eb', () => {
+      this.hideVRGameOverDialog();
+      if (options.onMenu) options.onMenu();
+    });
+
+    this.scene.add(this.vrGameOverGroup);
+  }
+
+  hideVRGameOverDialog() {
+    if (this.vrGameOverGroup) {
+      this.interactive3DButtons = this.interactive3DButtons.filter(b => !this.vrGameOverGroup.children.includes(b));
+      this.scene.remove(this.vrGameOverGroup);
+      this.vrGameOverGroup = null;
     }
   }
 

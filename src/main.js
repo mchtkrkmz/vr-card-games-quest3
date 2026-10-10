@@ -70,6 +70,15 @@ class AppManager {
       btnSortPairs: document.getElementById('btn-sort-pairs'),
       btnPhotoDemo: document.getElementById('btn-photo-demo'),
 
+      // Game Over Elements
+      gameOverModal: document.getElementById('game-over-modal'),
+      gameOverTitle: document.getElementById('game-over-title'),
+      gameOverWinner: document.getElementById('game-over-winner'),
+      gameOverSummary: document.getElementById('game-over-summary'),
+      btnGameOverRestart: document.getElementById('btn-game-over-restart'),
+      btnGameOverExitVR: document.getElementById('btn-game-over-exit-vr'),
+      btnGameOverMenu: document.getElementById('btn-game-over-menu'),
+
       // Multiplayer Elements
       multiplayerModal: document.getElementById('multiplayer-modal'),
       tabCreateRoom: document.getElementById('tab-create-room'),
@@ -448,6 +457,29 @@ class AppManager {
       });
     }
 
+    // Game Over Action Buttons
+    if (this.dom.btnGameOverRestart) {
+      this.dom.btnGameOverRestart.addEventListener('click', () => {
+        soundFx.playButtonClick();
+        this.hideGameOverModal();
+        this.startActiveGameMode();
+      });
+    }
+    if (this.dom.btnGameOverExitVR) {
+      this.dom.btnGameOverExitVR.addEventListener('click', () => {
+        soundFx.playButtonClick();
+        this.hideGameOverModal();
+        this.scene.exitVR();
+      });
+    }
+    if (this.dom.btnGameOverMenu) {
+      this.dom.btnGameOverMenu.addEventListener('click', () => {
+        soundFx.playButtonClick();
+        this.hideGameOverModal();
+        this.dom.menuModal.classList.remove('hidden');
+      });
+    }
+
     // Single Player Menu Modal
     this.dom.btnMenu.addEventListener('click', () => {
       soundFx.playButtonClick();
@@ -793,6 +825,7 @@ class AppManager {
   }
 
   startActiveGameMode() {
+    this.hideGameOverModal();
     if (this.currentGameType === 'BATAK') {
       this.startBatakGame();
     } else if (this.currentGameType === 'OKEY101') {
@@ -1088,6 +1121,11 @@ class AppManager {
       this.updateOkey101HUD(`👑 101 ŞAMPİYONU: ${data.winner.name}`);
       soundFx.playOkeyWinSlam();
       this.triggerVictoryCelebration(1.0);
+      this.showGameOverModal({
+        winnerName: data.winner.name,
+        details: `101 Okey Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (Ceza Puanı: ${data.winner.penaltyScore ?? 0})`,
+        gameType: 'OKEY101'
+      });
     }
   }
 
@@ -1293,6 +1331,11 @@ class AppManager {
       this.updateOkeyHUD(`👑 ŞAMPİYON: ${data.winner.name}`);
       soundFx.playOkeyWinSlam();
       this.triggerVictoryCelebration(1.0);
+      this.showGameOverModal({
+        winnerName: data.winner.name,
+        details: `Klasik Okey Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name}`,
+        gameType: 'OKEY'
+      });
     }
   }
 
@@ -1687,6 +1730,11 @@ class AppManager {
     } else if (event === 'match_winner') {
       this.updateBatakHUD(`🏆 OYUN BİTTİ! Kazanan: ${data.winner.name}`);
       this.triggerVictoryCelebration();
+      this.showGameOverModal({
+        winnerName: data.winner.name,
+        details: `Batak İhale Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (Puan: ${data.winner.score ?? 0})`,
+        gameType: 'BATAK'
+      });
     }
   }
 
@@ -1830,6 +1878,11 @@ class AppManager {
     } else if (event === 'match_winner') {
       this.updatePistiHUD(`🏆 ŞAMPİYON: ${data.winner.name} (${data.winner.totalScore} Puan)`);
       this.triggerVictoryCelebration(1.0);
+      this.showGameOverModal({
+        winnerName: data.winner.name,
+        details: `Pişti Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (${data.winner.totalScore} Puan)`,
+        gameType: 'PISTI'
+      });
     }
   }
 
@@ -1896,6 +1949,47 @@ class AppManager {
       spread: 80,
       origin: { y: 0.6 }
     });
+  }
+
+  showGameOverModal({ winnerName, details, gameType }) {
+    if (this.dom.gameOverWinner) {
+      this.dom.gameOverWinner.textContent = `👑 Kazanan: ${winnerName || 'Oyuncu'}`;
+    }
+    if (this.dom.gameOverSummary) {
+      this.dom.gameOverSummary.textContent = details || 'Tebrikler! Karşılaşma tamamlandı.';
+    }
+    if (this.dom.gameOverModal) {
+      this.dom.gameOverModal.classList.remove('hidden');
+    }
+
+    // VR 3D Dialog in WebXR
+    if (this.scene && typeof this.scene.showVRGameOverDialog === 'function') {
+      this.scene.showVRGameOverDialog({
+        winnerName: winnerName || 'Oyuncu',
+        scoreText: details || 'Tebrikler! Karşılaşma tamamlandı.',
+        onPlayAgain: () => {
+          this.hideGameOverModal();
+          this.startActiveGameMode();
+        },
+        onExitVR: () => {
+          this.hideGameOverModal();
+          this.scene.exitVR();
+        },
+        onMenu: () => {
+          this.hideGameOverModal();
+          this.dom.menuModal.classList.remove('hidden');
+        }
+      });
+    }
+  }
+
+  hideGameOverModal() {
+    if (this.dom.gameOverModal) {
+      this.dom.gameOverModal.classList.add('hidden');
+    }
+    if (this.scene && typeof this.scene.hideVRGameOverDialog === 'function') {
+      this.scene.hideVRGameOverDialog();
+    }
   }
 
   // --- VIP DEVELOPER AUTHENTICATION (MÜCAHİT KORKMAZ) ---
