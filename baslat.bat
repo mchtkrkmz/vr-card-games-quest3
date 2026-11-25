@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-title VR Kiraathane - Sunucu Baslatici
+title VR Kiraathane - Multiplayer & VR Sunucu
 color 0A
 
 echo ================================================================
@@ -26,16 +26,20 @@ if not exist node_modules (
     )
 )
 
-echo [OK] Sunucu baslatiliyor...
+echo [*] Guncel VR paketi derleniyor...
+call npm run build
+if %errorlevel% neq 0 (
+    echo [HATA] Derleme basarisiz!
+    pause
+    exit /b 1
+)
+
 echo.
-echo   Bilgisayar Tarayici:   http://localhost:5173/
-echo   Meta Quest 3 (Wi-Fi):  http://192.168.1.36:5173/
-echo.
-echo Sunucuyu durdurmak icin bu pencereyi kapatabilirsiniz.
-echo ================================================================
+echo [OK] Oyun ve Multiplayer/Ses Sunucusu baslatiliyor...
+echo Tarayicida http://localhost:3000 veya Quest 3 ile https://[YEREL-IP]:3443 acin.
 echo.
 
-start http://localhost:5173/
-call npm run dev
+start "" "http://localhost:3000/"
+node server/server.js
 
 pause

@@ -2,13 +2,14 @@ import { createStandardDeck, shuffleDeck, SUITS } from '../cards.js';
 import { antiCheat } from '../security/antiCheat.js';
 
 export class BatakGameEngine {
-  constructor(mode = 'IHALELI', totalRounds = 5) {
+  constructor(mode = 'IHALELI', totalRounds = 10) {
     this.mode = mode; // 'IHALELI' or 'KOZ_MACA'
-    this.totalRounds = totalRounds;
+    this.totalRounds = Math.max(10, Number(totalRounds) || 10);
     this.currentRound = 0;
     
     // 4 Players: [{ id, name, isBot, hand: [], tricksTaken: 0, bid: 0, roundScore: 0, totalScore: 0 }]
     this.players = [];
+    this.roundHistory = []; // Round-by-round Yazboz score history
     this.deck = [];
     this.currentTurn = 0;
     this.leadPlayerIndex = 0; // Player who started current trick
@@ -46,12 +47,16 @@ export class BatakGameEngine {
   initPlayers(customNames = []) {
     this.players = [];
     for (let i = 0; i < 4; i++) {
-      const isHuman = i === 0;
-      const defaultName = isHuman ? 'Oyuncu (Siz)' : `Bot ${i}`;
+      const cfg = customNames[i];
+      const isObj = cfg && typeof cfg === 'object';
+      const isBot = isObj ? Boolean(cfg.isBot) : i !== 0;
+      const defaultName = !isBot ? (i === 0 ? 'Oyuncu (Siz)' : `Oyuncu ${i + 1}`) : `Bot ${i}`;
       this.players.push({
         id: i,
-        name: customNames[i] || defaultName,
-        isBot: !isHuman,
+        name: (isObj ? cfg.name : cfg) || defaultName,
+        isBot,
+        avatarId: isObj ? cfg.avatarId || null : null,
+        clientId: isObj ? cfg.clientId || null : null,
         hand: [],
         tricksTaken: 0,
         bid: 0,
@@ -62,8 +67,67 @@ export class BatakGameEngine {
     }
   }
 
+  getSnapshot() {
+    return {
+      gameType: 'BATAK',
+      mode: this.mode,
+      totalRounds: this.totalRounds,
+      currentRound: this.currentRound,
+      currentTurn: this.currentTurn,
+      leadPlayerIndex: this.leadPlayerIndex,
+      currentTrick: this.currentTrick.map(t => ({ playerIndex: t.playerIndex, card: t.card })),
+      trumpSuit: this.trumpSuit,
+      trumpBroken: this.trumpBroken,
+      highestBid: this.highestBid,
+      highestBidderIndex: this.highestBidderIndex,
+      bidTurn: this.bidTurn,
+      consecutivePasses: this.consecutivePasses,
+      biddingActive: this.biddingActive,
+      choosingTrump: this.choosingTrump,
+      gameState: this.gameState,
+      players: this.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        isBot: p.isBot,
+        avatarId: p.avatarId || null,
+        clientId: p.clientId || null,
+        hand: p.hand,
+        tricksTaken: p.tricksTaken,
+        bid: p.bid,
+        hasPassed: p.hasPassed,
+        roundScore: p.roundScore,
+        totalScore: p.totalScore
+      })),
+      roundHistory: this.roundHistory,
+      gameLog: this.gameLog.slice(0, 8)
+    };
+  }
+
+  applySnapshot(snap) {
+    if (!snap) return;
+    this.mode = snap.mode ?? this.mode;
+    this.totalRounds = Math.max(10, Number(snap.totalRounds ?? this.totalRounds) || 10);
+    this.currentRound = snap.currentRound ?? this.currentRound;
+    this.currentTurn = snap.currentTurn ?? this.currentTurn;
+    this.leadPlayerIndex = snap.leadPlayerIndex ?? this.leadPlayerIndex;
+    this.currentTrick = snap.currentTrick || [];
+    this.trumpSuit = snap.trumpSuit ?? this.trumpSuit;
+    this.trumpBroken = Boolean(snap.trumpBroken);
+    this.highestBid = snap.highestBid ?? 0;
+    this.highestBidderIndex = snap.highestBidderIndex ?? -1;
+    this.bidTurn = snap.bidTurn ?? 0;
+    this.consecutivePasses = snap.consecutivePasses ?? 0;
+    this.biddingActive = Boolean(snap.biddingActive);
+    this.choosingTrump = Boolean(snap.choosingTrump);
+    this.gameState = snap.gameState ?? this.gameState;
+    this.players = (snap.players || []).map(p => ({ ...p, hand: [...(p.hand || [])] }));
+    if (Array.isArray(snap.roundHistory)) this.roundHistory = [...snap.roundHistory];
+    if (Array.isArray(snap.gameLog)) this.gameLog = [...snap.gameLog];
+  }
+
   startNewMatch() {
     this.currentRound = 0;
+    this.roundHistory = [];
     this.players.forEach(p => {
       p.totalScore = 0;
       p.roundScore = 0;
@@ -97,15 +161,17 @@ export class BatakGameEngine {
       this.players[pIdx].hand.push(this.deck[i]);
     }
 
-    // Sort hands by suit and value for convenience
+    // Only bots get pre-sorted hands at deal; human members sort via button/app rule, guests arrange manually
     const suitOrder = { 'S': 0, 'H': 1, 'D': 2, 'C': 3 };
     this.players.forEach(p => {
-      p.hand.sort((a, b) => {
-        if (suitOrder[a.suit] !== suitOrder[b.suit]) {
-          return suitOrder[a.suit] - suitOrder[b.suit];
-        }
-        return b.value - a.value;
-      });
+      if (p.isBot) {
+        p.hand.sort((a, b) => {
+          if (suitOrder[a.suit] !== suitOrder[b.suit]) {
+            return suitOrder[a.suit] - suitOrder[b.suit];
+          }
+          return b.value - a.value;
+        });
+      }
       antiCheat.generateHandChecksum(p.id, p.hand);
     });
 
@@ -358,13 +424,17 @@ export class BatakGameEngine {
     // 1. Must follow lead suit if held
     const cardsOfLeadSuit = hand.filter(c => c.suit === leadSuit);
     if (cardsOfLeadSuit.length > 0) {
-      // Rule: In Batak, player MUST raise (play higher card of lead suit) if they can!
-      const currentHighestLeadVal = Math.max(
-        ...this.currentTrick.filter(t => t.card.suit === leadSuit).map(t => t.card.value)
-      );
-      const higherCards = cardsOfLeadSuit.filter(c => c.value > currentHighestLeadVal);
-      if (higherCards.length > 0) {
-        return higherCards;
+      const trumpAlreadyPlayed =
+        leadSuit !== this.trumpSuit && this.currentTrick.some(t => t.card.suit === this.trumpSuit);
+      if (!trumpAlreadyPlayed) {
+        // Rule: In Batak, player MUST raise (play higher card of lead suit) if they can!
+        const currentHighestLeadVal = Math.max(
+          ...this.currentTrick.filter(t => t.card.suit === leadSuit).map(t => t.card.value)
+        );
+        const higherCards = cardsOfLeadSuit.filter(c => c.value > currentHighestLeadVal);
+        if (higherCards.length > 0) {
+          return higherCards;
+        }
       }
       return cardsOfLeadSuit;
     }
@@ -576,18 +646,35 @@ export class BatakGameEngine {
       p.totalScore += p.roundScore;
     });
 
+    this.roundHistory.push({
+      round: this.currentRound,
+      trumpSuit: this.trumpSuit,
+      bidderIndex: this.highestBidderIndex,
+      bid: this.highestBid,
+      scores: this.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        bid: p.id === this.highestBidderIndex ? p.bid : 0,
+        tricksTaken: p.tricksTaken,
+        roundScore: p.roundScore,
+        totalScore: p.totalScore,
+        batti: p.id === this.highestBidderIndex && p.tricksTaken < p.bid,
+      })),
+    });
+
     if (this.currentRound >= this.totalRounds) {
       this.gameState = 'GAME_OVER';
       // Find player with highest total score
       const sorted = [...this.players].sort((a, b) => b.totalScore - a.totalScore);
       const winner = sorted[0];
       this.log(`🏆 BATAK OYUNU TAMAMLANDI! Şampiyon: ${winner.name} (${winner.totalScore} Puan)`);
-      this.emit('match_winner', { winner, players: this.players });
+      this.emit('match_winner', { winner, players: this.players, roundHistory: this.roundHistory });
     } else {
       this.emit('round_ended', {
         round: this.currentRound,
         totalRounds: this.totalRounds,
-        players: this.players
+        players: this.players,
+        roundHistory: this.roundHistory,
       });
     }
   }

@@ -39,12 +39,16 @@ export class Okey101GameEngine {
   initPlayers(customNames = []) {
     this.players = [];
     for (let i = 0; i < 4; i++) {
-      const isHuman = i === 0;
-      const defaultName = isHuman ? 'Oyuncu (Siz)' : `Bot ${i}`;
+      const cfg = customNames[i];
+      const isObj = cfg && typeof cfg === 'object';
+      const isBot = isObj ? Boolean(cfg.isBot) : i !== 0;
+      const defaultName = !isBot ? (i === 0 ? 'Oyuncu (Siz)' : `Oyuncu ${i + 1}`) : `Bot ${i}`;
       this.players.push({
         id: i,
-        name: customNames[i] || defaultName,
-        isBot: !isHuman,
+        name: (isObj ? cfg.name : cfg) || defaultName,
+        isBot,
+        avatarId: isObj ? cfg.avatarId || null : null,
+        clientId: isObj ? cfg.clientId || null : null,
         hand: [],
         hasOpened: false,
         openedType: null,
@@ -53,6 +57,56 @@ export class Okey101GameEngine {
         totalPenalty: 0
       });
     }
+  }
+
+  getSnapshot() {
+    return {
+      gameType: 'OKEY101',
+      totalHands: this.totalHands,
+      currentHand: this.currentHand,
+      drawStackCount: this.drawStack.length,
+      gostergeTile: this.gostergeTile,
+      okeyTileInfo: this.okeyTileInfo,
+      currentTurn: this.currentTurn,
+      turnPhase: this.turnPhase,
+      discardPiles: this.discardPiles,
+      tableOpenedPers: this.tableOpenedPers,
+      gameState: this.gameState,
+      players: this.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        isBot: p.isBot,
+        avatarId: p.avatarId || null,
+        clientId: p.clientId || null,
+        hand: p.hand,
+        hasOpened: p.hasOpened,
+        openedType: p.openedType,
+        openedPers: p.openedPers,
+        handPenalty: p.handPenalty,
+        totalPenalty: p.totalPenalty
+      })),
+      gameLog: this.gameLog.slice(0, 8)
+    };
+  }
+
+  applySnapshot(snap) {
+    if (!snap) return;
+    this.totalHands = snap.totalHands ?? this.totalHands;
+    this.currentHand = snap.currentHand ?? this.currentHand;
+    this.drawStack = new Array(snap.drawStackCount ?? 0).fill(null);
+    this.gostergeTile = snap.gostergeTile || null;
+    this.okeyTileInfo = snap.okeyTileInfo || null;
+    this.currentTurn = snap.currentTurn ?? 0;
+    this.turnPhase = snap.turnPhase ?? 'DRAW';
+    this.discardPiles = snap.discardPiles || [[], [], [], []];
+    this.tableOpenedPers = snap.tableOpenedPers || [];
+    this.gameState = snap.gameState ?? this.gameState;
+    this.players = (snap.players || []).map(p => ({
+      ...p,
+      hand: [...(p.hand || [])],
+      openedPers: [...(p.openedPers || [])]
+    }));
+    if (Array.isArray(snap.gameLog)) this.gameLog = [...snap.gameLog];
   }
 
   startNewMatch() {
@@ -107,7 +161,9 @@ export class Okey101GameEngine {
           p.hand.push(this.drawStack.pop());
         }
       }
-      this.sortPlayerHand(p);
+      if (p.isBot) {
+        this.sortPlayerHand(p);
+      }
     });
 
     this.currentTurn = 0;

@@ -10,15 +10,50 @@ import { aiAdvisor } from './engine/aiAdvisor.js';
 import { networkManager } from './engine/network.js';
 import { AVAILABLE_AVATARS } from './vr/avatars.js';
 import { spatialVoice } from './engine/voiceChat.js';
-import { userDb } from './engine/db/userDatabase.js';
-import { arrangeHandTilesOnIstaka, createPhotoDemoHand } from './engine/okey/tiles.js';
+import { userDb, ADMIN_EMAIL } from './engine/db/userDatabase.js';
+import {
+  arrangeHandTilesOnIstaka,
+  assignRawIstakaSlots,
+  createPhotoDemoHand,
+  moveTileToIstakaSlot,
+  syncHandIstakaSlots,
+  ISTAKA_SLOTS_PER_TIER,
+} from './engine/okey/tiles.js';
+
+const CARD_SUIT_SVG_PATHS = {
+  S: 'M12 2C9 6.5 3.5 10.2 3.5 14.5c0 2.6 2 4.5 4.4 4.5 1.4 0 2.5-.6 3.1-1.5-.1 1.6-.6 3-1.8 4.5h5.6c-1.2-1.5-1.7-2.9-1.8-4.5.6.9 1.7 1.5 3.1 1.5 2.4 0 4.4-1.9 4.4-4.5C20.5 10.2 15 6.5 12 2z',
+  H: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
+  D: 'M12 2L4.5 12 12 22l7.5-10L12 2z',
+  C: 'M12 2.5a4.2 4.2 0 0 0-4.2 4.2c0 1.2.5 2.3 1.3 3a4.3 4.3 0 0 0-5.6 4.1A4.3 4.3 0 0 0 7.8 18c1.3 0 2.4-.5 3.2-1.4-.1 1.8-.7 3.4-2 4.9h6c-1.3-1.5-1.9-3.1-2-4.9.8.9 1.9 1.4 3.2 1.4a4.3 4.3 0 0 0 4.3-4.2 4.3 4.3 0 0 0-5.6-4.1c.8-.7 1.3-1.8 1.3-3A4.2 4.2 0 0 0 12 2.5z',
+};
+
+function getCardMeta(card) {
+  const idStr = typeof card?.id === 'string' ? card.id : '';
+  const inferredSuit = idStr.includes('_') ? idStr.split('_')[1] : '';
+  const suitObj = SUITS[card?.suit] || SUITS[inferredSuit] || SUITS.S;
+  const rank = String(card?.rank ?? card?.label ?? (idStr.includes('_') ? idStr.split('_')[0] : '?'));
+  const courtMap = { J: 'Vale', Q: 'Kız', K: 'Papaz', A: 'As' };
+  return {
+    suitId: suitObj.id,
+    symbol: card?.symbol || suitObj.symbol,
+    suitName: card?.suitName || suitObj.name,
+    isRed: typeof card?.isRed === 'boolean' ? card.isRed : suitObj.isRed,
+    rank,
+    court: card?.court || courtMap[rank] || null,
+  };
+}
+
+function getSuitSvg(suitId, className = '') {
+  const pathD = CARD_SUIT_SVG_PATHS[suitId] || CARD_SUIT_SVG_PATHS.S;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" class="${className}"><path fill="currentColor" d="${pathD}"/></svg>`;
+}
 
 class AppManager {
   constructor() {
     this.scene = null;
     this.currentGameType = 'BATAK'; // 'BATAK', 'PISTI', 'OKEY', 'OKEY101'
     this.gameEngine = null;
-    this.aiEnabled = true;
+    this.aiEnabled = false;
     this.currentAdvice = null;
 
     // Multiplayer State
@@ -47,14 +82,34 @@ class AppManager {
       themeGridContainer: document.getElementById('theme-grid-container'),
       btnAmbiance: document.getElementById('btn-ambiance'),
       ambianceIcon: document.getElementById('ambiance-icon'),
+      btnOrderTea: document.getElementById('btn-order-tea'),
+      btnMobileMenu: document.getElementById('btn-mobile-menu'),
+      secondaryControls: document.getElementById('secondary-controls'),
+      btnToggleLog: document.getElementById('btn-toggle-log'),
       btnSound: document.getElementById('btn-sound'),
       soundIcon: document.getElementById('sound-icon'),
+      soundPct: document.getElementById('sound-pct'),
+      audioPopover: document.getElementById('audio-settings-popover'),
+      btnToggleSpeakerMute: document.getElementById('btn-toggle-speaker-mute'),
+      sliderSpeakerVolume: document.getElementById('slider-speaker-volume'),
+      btnTestMic: document.getElementById('btn-test-mic'),
+      micMeterFill: document.getElementById('mic-meter-fill'),
       btnToggleAI: document.getElementById('btn-toggle-ai'),
       aiToggleLabel: document.getElementById('ai-toggle-label'),
       aiCoachPanel: document.getElementById('ai-coach-panel'),
       aiCoachContent: document.getElementById('ai-coach-content'),
       btnApplyAI: document.getElementById('btn-apply-ai'),
       btnNewHand: document.getElementById('btn-new-hand'),
+      btnScoreboard: document.getElementById('btn-scoreboard'),
+      btnLeaveGame: document.getElementById('btn-leave-game'),
+      scoreboardPanel: document.getElementById('scoreboard-panel'),
+      scoreboardTitleText: document.getElementById('scoreboard-title-text'),
+      scoreboardRoundBadge: document.getElementById('scoreboard-round-badge'),
+      scoreboardLiveBar: document.getElementById('scoreboard-live-bar'),
+      scoreboardThead: document.getElementById('scoreboard-thead'),
+      scoreboardTbody: document.getElementById('scoreboard-tbody'),
+      scoreboardTfoot: document.getElementById('scoreboard-tfoot'),
+      btnCloseScoreboard: document.getElementById('btn-close-scoreboard'),
       menuModal: document.getElementById('menu-modal'),
       btnCloseMenu: document.getElementById('btn-close-menu'),
       optBatak: document.getElementById('opt-batak'),
@@ -69,6 +124,12 @@ class AppManager {
       btnSortRuns: document.getElementById('btn-sort-runs'),
       btnSortPairs: document.getElementById('btn-sort-pairs'),
       btnPhotoDemo: document.getElementById('btn-photo-demo'),
+      mobileHandDock: document.getElementById('mobile-hand-dock'),
+      mobileHandToolbar: document.getElementById('mobile-hand-toolbar'),
+      mobileCardsTray: document.getElementById('mobile-cards-tray'),
+      mobileIstakaTray: document.getElementById('mobile-istaka-tray'),
+      mobileIstakaRow0: document.getElementById('mobile-istaka-row-0'),
+      mobileIstakaRow1: document.getElementById('mobile-istaka-row-1'),
 
       // Game Over Elements
       gameOverModal: document.getElementById('game-over-modal'),
@@ -81,6 +142,11 @@ class AppManager {
 
       // Multiplayer Elements
       multiplayerModal: document.getElementById('multiplayer-modal'),
+      mpServerStatus: document.getElementById('mp-server-status'),
+      inputServerUrl: document.getElementById('input-server-url'),
+      btnReconnectServer: document.getElementById('btn-reconnect-server'),
+      mpPublicRoomsList: document.getElementById('mp-public-rooms-list'),
+      btnRefreshRooms: document.getElementById('btn-refresh-rooms'),
       tabCreateRoom: document.getElementById('tab-create-room'),
       tabJoinRoom: document.getElementById('tab-join-room'),
       viewCreateRoom: document.getElementById('view-create-room'),
@@ -124,7 +190,11 @@ class AppManager {
       authUserName: document.getElementById('auth-user-name'),
       authUserEmailDisplay: document.getElementById('auth-user-email-display'),
       authVipBadge: document.getElementById('auth-vip-badge'),
+      authAiGrantedBadge: document.getElementById('auth-ai-granted-badge'),
       authRegularBadge: document.getElementById('auth-regular-badge'),
+      adminAiPanel: document.getElementById('admin-ai-panel'),
+      adminUsersList: document.getElementById('admin-users-list'),
+      btnRefreshAdminUsers: document.getElementById('btn-refresh-admin-users'),
       btnAuthLogout: document.getElementById('btn-auth-logout'),
       tabAuthLogin: document.getElementById('tab-auth-login'),
       tabAuthRegister: document.getElementById('tab-auth-register'),
@@ -137,58 +207,525 @@ class AppManager {
       inputRegEmail: document.getElementById('input-reg-email'),
       inputRegPassword: document.getElementById('input-reg-password'),
       btnRegSubmit: document.getElementById('btn-reg-submit'),
-      authMsg: document.getElementById('auth-msg')
+      authMsg: document.getElementById('auth-msg'),
     };
 
-    this.currentUser = JSON.parse(localStorage.getItem('vr_kiraathane_active_user') || 'null');
-    if (!localStorage.getItem('vr_registered_users')) {
-      const defaultUsers = [
-        { name: 'Mücahit Korkmaz', email: 'mchtkrkmz@gmail.com', password: '123' }
-      ];
-      localStorage.setItem('vr_registered_users', JSON.stringify(defaultUsers));
-    }
+    this.currentUser = userDb.getActiveSession();
+    this.aiEnabled = this.hasAIAccess();
 
     this.selectedTileIndex = -1;
+    this.selectedCardId = null;
     this.init();
+  }
+
+  // --- PERSPECTIVE / MULTIPLAYER SEAT HELPERS ---
+  getMySeat() {
+    if (networkManager.isConnected) {
+      return networkManager.localPlayerId ?? 0;
+    }
+    return 0;
+  }
+
+  isMultiplayerGuest() {
+    return networkManager.isConnected && !networkManager.isHost;
+  }
+
+  isMultiplayerHost() {
+    return networkManager.isConnected && networkManager.isHost;
+  }
+
+  getTotalPlayersCount() {
+    return this.gameEngine?.players?.length || 4;
+  }
+
+  toVisualSeat(engineSeat, totalPlayers = this.getTotalPlayersCount()) {
+    const mySeat = this.getMySeat();
+    if (totalPlayers === 2) {
+      return engineSeat === mySeat ? 0 : 2;
+    }
+    return (engineSeat - mySeat + totalPlayers) % totalPlayers;
+  }
+
+  toVisualArray(arr = []) {
+    const total = this.getTotalPlayersCount();
+    const out = [null, null, null, null];
+    for (let s = 0; s < arr.length; s++) {
+      const vSeat = this.toVisualSeat(s, total);
+      out[vSeat] = arr[s];
+    }
+    return out;
+  }
+
+  getMyPlayer() {
+    return this.gameEngine?.players?.[this.getMySeat()] || null;
+  }
+
+  getLeftEngineSeat() {
+    const total = this.getTotalPlayersCount();
+    return (this.getMySeat() + total - 1) % total;
+  }
+
+  setSelectedTile(idx) {
+    this.selectedTileIndex = idx;
+    if (this.scene) this.scene.setSelectedTileIndex(idx);
+    this.renderMobileHandDock();
+  }
+
+  isMobileHandMode() {
+    if (typeof window === 'undefined') return false;
+    if (this.scene?.isVRActive) return false;
+    return window.innerWidth <= 960 || window.innerHeight <= 540;
+  }
+
+  syncMobileHandMode() {
+    const active = this.isMobileHandMode();
+    this.scene?.setMobileHandDockActive?.(active);
+    this.renderMobileHandDock();
+  }
+
+  renderMobileHandDock() {
+    const dock = this.dom.mobileHandDock;
+    if (!dock) return;
+    if (!this.isMobileHandMode() || !this.gameEngine) {
+      dock.style.display = 'none';
+      return;
+    }
+
+    dock.style.display = 'flex';
+    const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+    const hand = Array.isArray(myPlayer?.hand) ? myPlayer.hand : [];
+    const isOkeyType = this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101';
+    const hasAI = this.hasAIAccess();
+    const canSort = this.canAutoSort();
+    const advice = hasAI && this.aiEnabled ? this.currentAdvice : null;
+
+    if (this.selectedCardId && !hand.some((c) => c.id === this.selectedCardId)) {
+      this.selectedCardId = null;
+    }
+
+    const isPlayingState = isOkeyType
+      ? this.gameEngine.gameState !== 'GAME_OVER'
+      : this.gameEngine.gameState === 'PLAYING';
+    const isMyTurn = this.gameEngine.currentTurn === mySeat && isPlayingState;
+
+    const prevCardScroll = this.dom.mobileCardsTray?.scrollLeft || 0;
+    const prevIstakaScroll = this.dom.mobileIstakaTray?.scrollLeft || 0;
+
+    // 1. Build compact mobile dock toolbar
+    const toolbar = this.dom.mobileHandToolbar;
+    if (toolbar) {
+      toolbar.innerHTML = '';
+
+      const statusPill = document.createElement('span');
+      statusPill.className = `m-toolbar-pill${isMyTurn ? ' turn' : ''}`;
+      if (isOkeyType) {
+        const phaseTxt = isMyTurn
+          ? this.gameEngine.turnPhase === 'DRAW'
+            ? '🟢 Taş Çek'
+            : '🟢 Taş At'
+          : '⏳ Rakip';
+        let extra = '';
+        if (this.currentGameType === 'OKEY101' && this.gameEngine.calculateHandPerPoints && myPlayer) {
+          const pts = this.gameEngine.calculateHandPerPoints(myPlayer)?.totalPoints || 0;
+          extra = ` • ${pts}p`;
+        }
+        statusPill.textContent = `${phaseTxt}${extra}`;
+      } else {
+        const phaseTxt =
+          this.currentGameType === 'BATAK' && this.gameEngine.gameState === 'BIDDING'
+            ? '🔔 İhale'
+            : this.currentGameType === 'BATAK' && this.gameEngine.gameState === 'CHOOSE_TRUMP'
+              ? '👑 Koz'
+              : isMyTurn
+                ? '🟢 Sıranız'
+                : '⏳ Rakip';
+        statusPill.textContent = `${phaseTxt} • ${hand.length} Kart`;
+      }
+      toolbar.appendChild(statusPill);
+
+      if (this.currentGameType === 'BATAK' && this.gameEngine.trumpSuit && this.gameEngine.gameState === 'PLAYING') {
+        const trumpSuit = SUITS[this.gameEngine.trumpSuit] || SUITS.S;
+        const trumpPill = document.createElement('span');
+        trumpPill.className = 'm-toolbar-pill';
+        trumpPill.innerHTML = `Koz: <strong style="color:${trumpSuit.isRed ? '#f87171' : '#93c5fd'}">${trumpSuit.symbol} ${trumpSuit.name}</strong>`;
+        toolbar.appendChild(trumpPill);
+      } else if (this.currentGameType === 'PISTI') {
+        const tableCards = this.gameEngine.tableCards || [];
+        const tablePill = document.createElement('span');
+        tablePill.className = 'm-toolbar-pill';
+        if (tableCards.length > 0) {
+          const topMeta = getCardMeta(tableCards[tableCards.length - 1]);
+          tablePill.innerHTML = `Masa (${tableCards.length}): <strong style="color:${topMeta.isRed ? '#f87171' : '#f8fafc'}">${topMeta.symbol} ${topMeta.rank}</strong>`;
+        } else {
+          tablePill.textContent = 'Masa: Boş';
+        }
+        toolbar.appendChild(tablePill);
+      }
+
+      const addToolBtn = (label, cls, onClick) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `m-toolbar-btn ${cls || ''}`.trim();
+        btn.textContent = label;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          soundFx.playButtonClick();
+          onClick();
+        });
+        toolbar.appendChild(btn);
+      };
+
+      if (isOkeyType) {
+        if (isMyTurn && this.gameEngine.turnPhase === 'DRAW') {
+          addToolBtn('➕ Deste', 'primary', () => this.dispatchOkeyDrawStack());
+          const leftSeat = this.getLeftEngineSeat();
+          const leftPile = this.gameEngine.discardPiles?.[leftSeat];
+          if (leftPile && leftPile.length > 0) {
+            const topTile = leftPile[leftPile.length - 1];
+            addToolBtn(`↩️ Yandan (${topTile.isFakeOkey ? 'Sahte' : topTile.number})`, 'warn', () => this.dispatchOkeyDrawDiscard());
+          }
+        } else if (isMyTurn && this.gameEngine.turnPhase === 'DISCARD') {
+          const selTile = this.selectedTileIndex >= 0 ? hand[this.selectedTileIndex] : null;
+          if (selTile) {
+            addToolBtn(`🗑️ At (${selTile.isFakeOkey ? 'Sahte' : selTile.number})`, 'warn', () => this.dispatchOkeyDiscard(selTile.id));
+          }
+          if (this.currentGameType === 'OKEY101' && myPlayer && !myPlayer.hasOpened && this.gameEngine.calculateHandPerPoints) {
+            const pts = this.gameEngine.calculateHandPerPoints(myPlayer)?.totalPoints || 0;
+            if (pts >= 101) {
+              addToolBtn(`✨ 101 Aç (${pts})`, 'primary', () => this.dispatchOkey101Open());
+            }
+          }
+        }
+
+        if (canSort) {
+          addToolBtn('📐 Seri', '', () => this.sortHandRuns());
+          addToolBtn('👥 Çift', '', () => this.sortHandPairs());
+        }
+        if (hasAI) {
+          addToolBtn('🧠 AI Diz', 'ai', () => this.sortHandAI());
+          if (advice) {
+            addToolBtn('⚡ AI Hamle', 'ai', () => this.applyAIRecommendation());
+          }
+        }
+      } else {
+        const selCard = this.selectedCardId ? hand.find((c) => c.id === this.selectedCardId) : null;
+        if (selCard) {
+          const selIdx = hand.findIndex((c) => c.id === selCard.id);
+          const selMeta = getCardMeta(selCard);
+          const isPlayable =
+            isMyTurn &&
+            (this.currentGameType !== 'BATAK' || this.gameEngine.isCardPlayable(mySeat, selCard.id));
+          if (isPlayable) {
+            addToolBtn(`🃏 Oyna: ${selMeta.symbol} ${selMeta.suitName} ${selMeta.court || selMeta.rank}`, 'primary', () => {
+              this.selectedCardId = null;
+              this.dispatchPlayCard(selCard.id);
+            });
+          }
+          if (selIdx > 0) {
+            addToolBtn('◀', '', () => this.handleUserCardReorder(selCard, selIdx - 1));
+          }
+          if (selIdx >= 0 && selIdx < hand.length - 1) {
+            addToolBtn('▶', '', () => this.handleUserCardReorder(selCard, selIdx + 1));
+          }
+        }
+
+        if (canSort) {
+          addToolBtn('🃏 Sırala', '', () => this.sortBatakCards());
+        }
+        if (hasAI && advice) {
+          addToolBtn('⚡ AI Öneri', 'ai', () => this.applyAIRecommendation());
+        }
+      }
+    }
+
+    // 2. Render Card Tray (Batak & Pişti) or 2-Row Okey Istaka Tray (Okey & 101)
+    const cardsTray = this.dom.mobileCardsTray;
+    const istakaTray = this.dom.mobileIstakaTray;
+    if (!cardsTray || !istakaTray) return;
+
+    if (!isOkeyType) {
+      cardsTray.style.display = 'flex';
+      istakaTray.style.display = 'none';
+      const isCompact = hand.length <= 6;
+      cardsTray.classList.toggle('compact-hand', isCompact);
+      cardsTray.classList.toggle('fanned-hand', !isCompact);
+      cardsTray.innerHTML = '';
+
+      const legalSet =
+        this.currentGameType === 'BATAK' && isMyTurn
+          ? new Set(this.gameEngine.getLegalCards(mySeat).map((c) => c.id))
+          : null;
+      const recCardId = advice?.recommendedCard?.id || null;
+
+      hand.forEach((card) => {
+        const meta = getCardMeta(card);
+        const el = document.createElement('button');
+        el.type = 'button';
+        const isDisabled = Boolean(isMyTurn && legalSet && !legalSet.has(card.id));
+        const isSelected = this.selectedCardId === card.id;
+        const isRec = recCardId === card.id;
+
+        el.className = `m-card ${meta.isRed ? 'red' : 'black'}${isDisabled ? ' disabled' : ''}${isSelected ? ' selected' : ''}${isRec ? ' recommended' : ''}`;
+        el.setAttribute('aria-label', `${meta.suitName} ${meta.court || meta.rank}`);
+
+        el.innerHTML = `
+          ${isRec ? '<span class="m-card-ai-badge">AI</span>' : ''}
+          <div class="m-card-face">
+            <div class="m-card-corner top">
+              <span class="m-card-rank">${meta.rank}</span>
+              ${getSuitSvg(meta.suitId, 'm-card-suit-svg')}
+            </div>
+            <div class="m-card-center">
+              ${getSuitSvg(meta.suitId, 'm-card-center-svg')}
+              ${meta.court ? `<span class="m-card-court">${meta.court.toUpperCase()}</span>` : ''}
+            </div>
+            <div class="m-card-corner bottom">
+              <span class="m-card-rank">${meta.rank}</span>
+              ${getSuitSvg(meta.suitId, 'm-card-suit-svg')}
+            </div>
+          </div>
+        `;
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (this.selectedCardId === card.id) {
+            if (isMyTurn) {
+              if (this.currentGameType === 'BATAK' && !this.gameEngine.isCardPlayable(mySeat, card.id)) {
+                soundFx.playButtonClick();
+                this.appendLog('⚠️ Kural ihlali: Bu kartı oynayamazsınız!');
+                return;
+              }
+              this.selectedCardId = null;
+              this.dispatchPlayCard(card.id);
+            } else {
+              soundFx.playButtonClick();
+              this.selectedCardId = null;
+              this.renderMobileHandDock();
+            }
+          } else {
+            soundFx.playButtonClick();
+            this.selectedCardId = card.id;
+            this.renderMobileHandDock();
+          }
+        });
+
+        cardsTray.appendChild(el);
+      });
+      cardsTray.scrollLeft = prevCardScroll;
+    } else {
+      cardsTray.style.display = 'none';
+      istakaTray.style.display = 'flex';
+      syncHandIstakaSlots(hand);
+
+      const tiers = [
+        new Array(ISTAKA_SLOTS_PER_TIER).fill(null),
+        new Array(ISTAKA_SLOTS_PER_TIER).fill(null),
+      ];
+      hand.forEach((tile, idx) => {
+        const tier = tile._istakaTier === 1 ? 1 : 0;
+        const slot = Math.max(0, Math.min(ISTAKA_SLOTS_PER_TIER - 1, tile._istakaSlot ?? 0));
+        if (!tiers[tier][slot]) {
+          tiers[tier][slot] = { tile, idx };
+        }
+      });
+
+      const recTileId = advice?.bestDiscard?.tile?.id || null;
+      const colorClassFor = (tile) => {
+        const key = (tile.colorKey || tile.colorName || '').toString().toUpperCase();
+        if (key === 'RED' || key === 'KIRMIZI') return 'color-red';
+        if (key === 'BLACK' || key === 'SİYAH' || key === 'SIYAH') return 'color-black';
+        if (key === 'BLUE' || key === 'MAVİ' || key === 'MAVI') return 'color-blue';
+        return 'color-gold';
+      };
+
+      const rowEls = [this.dom.mobileIstakaRow0, this.dom.mobileIstakaRow1];
+      rowEls.forEach((rowEl, tier) => {
+        if (!rowEl) return;
+        rowEl.innerHTML = '';
+
+        for (let slot = 0; slot < ISTAKA_SLOTS_PER_TIER; slot++) {
+          const entry = tiers[tier][slot];
+          if (entry) {
+            const { tile, idx } = entry;
+            const tileBtn = document.createElement('button');
+            tileBtn.type = 'button';
+            const isSelected = this.selectedTileIndex === idx;
+            const isRec = recTileId === tile.id;
+            const isRealOkey = Boolean(tile.isRealOkey);
+            tileBtn.className = `m-tile ${colorClassFor(tile)}${tile.isFakeOkey ? ' joker' : ''}${isRealOkey ? ' okey-wild' : ''}${isSelected ? ' selected' : ''}${isRec ? ' recommended' : ''}`;
+            tileBtn.setAttribute('aria-label', `${tile.colorName || ''} ${tile.isFakeOkey ? 'Sahte Okey' : tile.number}`);
+            tileBtn.innerHTML = `
+              ${isRec ? '<span class="m-tile-ai-badge">AT</span>' : isRealOkey ? '<span class="m-tile-okey-badge">★</span>' : ''}
+              <span class="m-tile-num">${tile.isFakeOkey ? '★' : tile.number}</span>
+              <span class="m-tile-dot"></span>
+            `;
+            tileBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this.handleUserTileSelected(tile);
+            });
+            rowEl.appendChild(tileBtn);
+          } else {
+            const emptyEl = document.createElement('button');
+            emptyEl.type = 'button';
+            emptyEl.className = `m-slot-empty${this.selectedTileIndex !== -1 ? ' drop-ready' : ''}`;
+            emptyEl.setAttribute('aria-label', `Boş slot ${tier + 1}-${slot + 1}`);
+            emptyEl.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (this.selectedTileIndex !== -1) {
+                this.handleTileDropToSlot(null, tier, slot);
+              }
+            });
+            rowEl.appendChild(emptyEl);
+          }
+        }
+      });
+      istakaTray.scrollLeft = prevIstakaScroll;
+    }
   }
 
   init() {
     this.scene = new VRCardScene(this.dom.container);
     this.scene.onCardSelectedCallback = this.handleUserCardSelected.bind(this);
+    this.scene.onCardReorderCallback = this.handleUserCardReorder.bind(this);
     this.scene.onTileSelectedCallback = this.handleUserTileSelected.bind(this);
+    this.scene.onTileDropToSlotCallback = this.handleTileDropToSlot.bind(this);
+    this.scene.onTileDropToDiscardCallback = this.handleTileDropToDiscard.bind(this);
     this.scene.onCenterStackClickCallback = this.handleCenterStackClick.bind(this);
     this.scene.onSortAiCallback = () => this.sortHandAI();
     this.scene.onSortRunsCallback = () => this.sortHandRuns();
     this.scene.onSortPairsCallback = () => this.sortHandPairs();
     this.scene.onSortPhotoDemoCallback = () => this.loadPhotoDemoIstaka();
     this.scene.onSortCardsCallback = () => this.sortBatakCards();
-    this.scene.onDrawDiscardCallback = () => {
-      if (this.gameEngine && typeof this.gameEngine.drawFromDiscard === 'function') {
-        this.gameEngine.drawFromDiscard(0);
-        this.hideActionPanel();
+    this.scene.onDrawDiscardCallback = () => this.dispatchOkeyDrawDiscard();
+    this.scene.onAiAdviceClickCallback = () => this.applyAIRecommendation();
+    this.scene.onVRMicToggleCallback = () => this.toggleMicrophone();
+    this.scene.onVRSpeakerToggleCallback = () => this.toggleSpeakerMute();
+
+    spatialVoice.attachNetwork(networkManager, (remoteClientId) => {
+      const p = (networkManager.roomPlayers || []).find((x) => x.clientId === remoteClientId);
+      if (!p) return 1;
+      return this.toVisualSeat(p.seatIndex ?? p.seat ?? 1, networkManager.maxPlayers || 4);
+    });
+
+    spatialVoice.onMicLevel((level) => {
+      if (this.dom.micMeterFill) {
+        this.dom.micMeterFill.style.width = `${Math.round(level * 100)}%`;
       }
-    };
-    this.scene.onAiAdviceClickCallback = () => {
-      this.applyAIRecommendation();
-    };
+    });
 
     this.renderAvatarPickers();
     this.renderThemeSelector();
     this.updateVIPState();
     this.setupUIEventListeners();
     this.setupMultiplayerListeners();
+    this.syncAudioUI();
+
+    // Auto-connect WebSocket in background if server is running
+    networkManager.connect().then(() => {
+      if (this.currentUser?.token) networkManager.identifyUser(this.currentUser.token);
+    }).catch(() => {});
+
+    // Validate active session & sync admin-granted AI access from server
+    userDb.refreshSession().then((refreshed) => {
+      this.currentUser = refreshed;
+      this.aiEnabled = this.hasAIAccess();
+      this.updateVIPState();
+      this.refreshCurrentGameViews();
+      if (refreshed?.token && networkManager.serverConnected) {
+        networkManager.identifyUser(refreshed.token);
+      }
+    }).catch(() => {});
+
     this.startBatakGame();
+    window.addEventListener('resize', () => this.syncMobileHandMode());
+    window.addEventListener('orientationchange', () => setTimeout(() => this.syncMobileHandMode(), 180));
+    this.syncMobileHandMode();
+  }
+
+  // --- AUDIO / MICROPHONE / SPEAKER CONTROLS ---
+  syncAudioUI() {
+    const micActive = spatialVoice.isVoiceActive;
+    const micMuted = spatialVoice.isMuted;
+    const spMuted = spatialVoice.speakerMuted;
+    const spPct = Math.round(spatialVoice.speakerVolume * 100);
+
+    if (this.dom.btnVoice) {
+      this.dom.btnVoice.classList.toggle('active', micActive && !micMuted);
+    }
+    if (this.dom.voiceIcon) {
+      this.dom.voiceIcon.textContent = !micActive ? '🎙️' : micMuted ? '🔇' : '🎤';
+    }
+    if (this.dom.voiceLabel) {
+      this.dom.voiceLabel.textContent = !micActive ? 'Mikrofon' : micMuted ? 'Mik Kapalı' : 'Mik Açık';
+    }
+
+    if (this.dom.soundIcon) {
+      this.dom.soundIcon.textContent = spMuted || spPct === 0 ? '🔇' : '🔊';
+    }
+    if (this.dom.soundPct) {
+      this.dom.soundPct.textContent = spMuted ? 'Sessiz' : `${spPct}%`;
+    }
+    if (this.dom.btnToggleSpeakerMute) {
+      this.dom.btnToggleSpeakerMute.textContent = spMuted ? 'Sessiz' : 'Açık';
+      this.dom.btnToggleSpeakerMute.classList.toggle('pass', spMuted);
+    }
+    if (this.dom.sliderSpeakerVolume) {
+      this.dom.sliderSpeakerVolume.value = String(spPct);
+    }
+    if (this.dom.btnTestMic) {
+      this.dom.btnTestMic.textContent = spatialVoice.isMicTesting ? 'Testi Durdur' : 'Test Et';
+      this.dom.btnTestMic.classList.toggle('pass', spatialVoice.isMicTesting);
+    }
+    if (this.scene) {
+      this.scene.updateVRDockAudioLabels(micActive, micMuted, spMuted);
+    }
+  }
+
+  async toggleMicrophone() {
+    soundFx.unlockAudio();
+    if (!spatialVoice.isVoiceActive) {
+      const ok = await spatialVoice.initVoiceChat();
+      if (ok) {
+        this.appendLog('🎙️ Mikrofon açıldı! Masadaki oyuncular sesinizi 3D olarak duyabilir.');
+      } else {
+        const msg = spatialVoice.lastError || 'Mikrofon erişimi sağlanamadı.';
+        this.appendLog(`⚠️ ${msg}`);
+        if (
+          typeof window !== 'undefined' &&
+          !window.isSecureContext &&
+          location.hostname !== 'localhost' &&
+          location.hostname !== '127.0.0.1'
+        ) {
+          const httpsUrl = `https://${location.hostname}:3443${location.pathname}`;
+          if (confirm(`${msg}\n\nMobil cihazda mikrofonun çalışması için güvenli HTTPS adresine (${httpsUrl}) geçmek ister misiniz?`)) {
+            location.href = httpsUrl;
+          }
+        } else if (!this.scene?.isVRActive) {
+          alert(msg);
+        }
+      }
+    } else {
+      const muted = spatialVoice.toggleMute();
+      this.appendLog(muted ? '🔇 Mikrofon sessize alındı.' : '🎤 Mikrofon tekrar açıldı.');
+    }
+    this.syncAudioUI();
+  }
+
+  toggleSpeakerMute() {
+    const muted = spatialVoice.toggleSpeakerMute();
+    this.appendLog(muted ? '🔇 Hoparlör sessize alındı.' : '🔊 Hoparlör açıldı.');
+    this.syncAudioUI();
   }
 
   renderThemeSelector() {
     if (!this.dom.themeGridContainer) return;
     this.dom.themeGridContainer.innerHTML = '';
-
     const currentThemeId = this.scene ? this.scene.currentThemeId : 'balat';
 
-    KIRAATHANE_THEMES.forEach(theme => {
+    KIRAATHANE_THEMES.forEach((theme) => {
       const card = document.createElement('div');
-      const isActive = (theme.id === currentThemeId);
+      const isActive = theme.id === currentThemeId;
       card.className = `theme-card ${isActive ? 'active' : ''}`;
       card.innerHTML = `
         <div class="theme-card-img-wrapper">
@@ -204,9 +741,7 @@ class AppManager {
 
       card.onclick = () => {
         soundFx.playButtonClick();
-        if (this.scene) {
-          this.scene.setKiraathaneEnvironment(theme.id);
-        }
+        if (this.scene) this.scene.setKiraathaneEnvironment(theme.id);
         this.renderThemeSelector();
         this.dom.themeModal.classList.add('hidden');
         this.appendLog(`🌆 Mekan Değiştirildi: ${theme.name}`);
@@ -220,11 +755,11 @@ class AppManager {
     const createPicker = (container, isCreate = true) => {
       if (!container) return;
       container.innerHTML = '';
-      AVAILABLE_AVATARS.forEach(av => {
+      AVAILABLE_AVATARS.forEach((av) => {
         const card = document.createElement('div');
-        const isSelected = isCreate ? (av.id === this.selectedCreateAvatar) : (av.id === this.selectedJoinAvatar);
+        const isSelected = isCreate ? av.id === this.selectedCreateAvatar : av.id === this.selectedJoinAvatar;
         card.className = `avatar-card ${isSelected ? 'selected' : ''}`;
-        const imgHtml = av.image 
+        const imgHtml = av.image
           ? `<img src="${av.image}" class="avatar-photo-thumb" alt="${av.name}" />`
           : `<div class="avatar-icon">${av.icon}</div>`;
         card.innerHTML = `
@@ -236,11 +771,8 @@ class AppManager {
         `;
         card.onclick = () => {
           soundFx.playButtonClick();
-          if (isCreate) {
-            this.selectedCreateAvatar = av.id;
-          } else {
-            this.selectedJoinAvatar = av.id;
-          }
+          if (isCreate) this.selectedCreateAvatar = av.id;
+          else this.selectedJoinAvatar = av.id;
           createPicker(container, isCreate);
         };
         container.appendChild(card);
@@ -252,240 +784,202 @@ class AppManager {
   }
 
   setupUIEventListeners() {
-    // Theme Modal Listeners
-    if (this.dom.btnThemeModal) {
-      this.dom.btnThemeModal.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.renderThemeSelector();
-        this.dom.themeModal.classList.remove('hidden');
-      });
-    }
+    // Theme Modal
+    this.dom.btnThemeModal?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.renderThemeSelector();
+      this.dom.themeModal.classList.remove('hidden');
+    });
+    this.dom.btnCloseThemeModal?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.dom.themeModal.classList.add('hidden');
+    });
 
-    if (this.dom.btnCloseThemeModal) {
-      this.dom.btnCloseThemeModal.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.dom.themeModal.classList.add('hidden');
-      });
-    }
+    // User Profile / VIP Auth Modal
+    this.dom.btnProfile?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.openAuthModal();
+    });
+    this.dom.btnCloseAuthModal?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.dom.authModal.classList.add('hidden');
+    });
 
-    // User Profile / VIP Auth Modal Listeners
-    if (this.dom.btnProfile) {
-      this.dom.btnProfile.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.openAuthModal();
-      });
-    }
+    this.dom.tabAuthLogin?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.dom.tabAuthLogin.classList.add('active');
+      this.dom.tabAuthRegister.classList.remove('active');
+      this.dom.viewAuthLogin.classList.remove('hidden');
+      this.dom.viewAuthRegister.classList.add('hidden');
+      if (this.dom.authMsg) this.dom.authMsg.style.display = 'none';
+    });
 
-    if (this.dom.btnCloseAuthModal) {
-      this.dom.btnCloseAuthModal.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.dom.authModal.classList.add('hidden');
-      });
-    }
+    this.dom.tabAuthRegister?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.dom.tabAuthRegister.classList.add('active');
+      this.dom.tabAuthLogin.classList.remove('active');
+      this.dom.viewAuthRegister.classList.remove('hidden');
+      this.dom.viewAuthLogin.classList.add('hidden');
+      if (this.dom.authMsg) this.dom.authMsg.style.display = 'none';
+    });
 
-    // Auth Tab Switchers
-    if (this.dom.tabAuthLogin) {
-      this.dom.tabAuthLogin.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.dom.tabAuthLogin.classList.add('active');
-        this.dom.tabAuthRegister.classList.remove('active');
-        this.dom.viewAuthLogin.classList.remove('hidden');
-        this.dom.viewAuthRegister.classList.add('hidden');
-        if (this.dom.authMsg) this.dom.authMsg.style.display = 'none';
-      });
-    }
-
-    if (this.dom.tabAuthRegister) {
-      this.dom.tabAuthRegister.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.dom.tabAuthRegister.classList.add('active');
-        this.dom.tabAuthLogin.classList.remove('active');
-        this.dom.viewAuthRegister.classList.remove('hidden');
-        this.dom.viewAuthLogin.classList.add('hidden');
-        if (this.dom.authMsg) this.dom.authMsg.style.display = 'none';
-      });
-    }
-
-    // Login Submit
-    if (this.dom.btnLoginSubmit) {
-      this.dom.btnLoginSubmit.addEventListener('click', async () => {
-        soundFx.playButtonClick();
-        const email = (this.dom.inputLoginEmail.value || '').trim();
-        const pass = (this.dom.inputLoginPassword.value || '').trim();
-
-        if (!email || !email.includes('@')) {
-          this.showAuthMsg('Lütfen geçerli bir e-posta adresi girin.', 'error');
-          return;
+    this.dom.btnLoginSubmit?.addEventListener('click', async () => {
+      soundFx.playButtonClick();
+      const email = (this.dom.inputLoginEmail.value || '').trim();
+      const pass = (this.dom.inputLoginPassword.value || '').trim();
+      if (!email || !email.includes('@')) {
+        this.showAuthMsg('Lütfen geçerli bir e-posta adresi girin.', 'error');
+        return;
+      }
+      try {
+        this.dom.btnLoginSubmit.textContent = 'Doğrulanıyor...';
+        const user = await userDb.loginUser(email, pass);
+        this.currentUser = user;
+        this.aiEnabled = this.hasAIAccess();
+        if (user?.token && networkManager.serverConnected) {
+          networkManager.identifyUser(user.token);
         }
-
-        try {
-          this.dom.btnLoginSubmit.textContent = 'Doğrulanıyor...';
-          const user = await userDb.loginUser(email, pass);
-          this.currentUser = user;
-          this.updateVIPState();
-
-          if (this.isVIPUser()) {
-            this.showAuthMsg('👑 Mücahit Korkmaz doğrulandı! VIP Yapay Zeka Koçu aktif edildi.', 'success');
-          } else {
-            this.showAuthMsg(`Hoş geldiniz ${user.name}! Giriş başarılı.`, 'success');
-          }
-
-          setTimeout(() => {
-            this.dom.authModal.classList.add('hidden');
-            this.updateAIAdvisor();
-          }, 1100);
-        } catch (err) {
-          this.showAuthMsg(err.message || 'Giriş başarısız oldu.', 'error');
-        } finally {
-          this.dom.btnLoginSubmit.textContent = '🔐 Giriş Yap';
-        }
-      });
-    }
-
-    // Register Submit
-    if (this.dom.btnRegSubmit) {
-      this.dom.btnRegSubmit.addEventListener('click', async () => {
-        soundFx.playButtonClick();
-        const name = (this.dom.inputRegName.value || '').trim();
-        const email = (this.dom.inputRegEmail.value || '').trim();
-        const pass = (this.dom.inputRegPassword.value || '').trim();
-
-        if (!name) {
-          this.showAuthMsg('Lütfen adınızı ve soyadınızı girin.', 'error');
-          return;
-        }
-        if (!email || !email.includes('@')) {
-          this.showAuthMsg('Lütfen geçerli bir e-posta adresi girin.', 'error');
-          return;
-        }
-        if (pass.length < 3) {
-          this.showAuthMsg('Şifre en az 3 karakter olmalıdır.', 'error');
-          return;
-        }
-
-        try {
-          this.dom.btnRegSubmit.textContent = 'Kaydediliyor...';
-          const user = await userDb.registerUser(name, email, pass, 'kasketli');
-          this.currentUser = user;
-          this.updateVIPState();
-
-          if (this.isVIPUser()) {
-            this.showAuthMsg('👑 Mücahit Korkmaz üyeliği veritabanına kaydedildi! VIP AI Asistanı aktif.', 'success');
-          } else {
-            this.showAuthMsg(`✨ Tebrikler ${name}! Üyeliğiniz veritabanına kaydedildi ve giriş yapıldı.`, 'success');
-          }
-
-          setTimeout(() => {
-            this.dom.authModal.classList.add('hidden');
-            this.updateAIAdvisor();
-          }, 1100);
-        } catch (err) {
-          this.showAuthMsg(err.message || 'Kayıt başarısız oldu.', 'error');
-        } finally {
-          this.dom.btnRegSubmit.textContent = '✨ Üyeliği Oluştur ve Başla';
-        }
-      });
-    }
-
-    // Logout
-    if (this.dom.btnAuthLogout) {
-      this.dom.btnAuthLogout.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        userDb.clearSession();
-        this.currentUser = null;
         this.updateVIPState();
-        this.openAuthModal();
-      });
-    }
+        this.refreshCurrentGameViews();
+        const notice = this.isAdminUser()
+          ? '👑 Yönetici Mücahit Korkmaz girişi başarılı! Tüm oyunlarda AI Asistan ve yetki yönetimi aktif.'
+          : this.hasAIAccess()
+            ? '🤖 Yapay Zeka destekli üye girişi başarılı!'
+            : `Hoş geldiniz ${user.name}! Giriş başarılı.`;
+        this.showAuthMsg(notice, 'success');
+        setTimeout(() => {
+          if (this.isAdminUser()) {
+            this.renderAdminUsersList();
+          } else {
+            this.dom.authModal.classList.add('hidden');
+          }
+          this.updateAIAdvisor();
+        }, 700);
+      } catch (err) {
+        this.showAuthMsg(err.message || 'Giriş başarısız oldu.', 'error');
+      } finally {
+        this.dom.btnLoginSubmit.textContent = '🔐 Giriş Yap';
+      }
+    });
 
-    // AI Assistant Toggle (VIP Master only)
-    if (this.dom.btnToggleAI) {
-      this.dom.btnToggleAI.addEventListener('click', () => {
-        if (!this.isVIPUser()) return;
-        soundFx.playButtonClick();
-        this.aiEnabled = !this.aiEnabled;
-        this.dom.btnToggleAI.classList.toggle('active', this.aiEnabled);
-        this.dom.aiToggleLabel.textContent = this.aiEnabled ? 'AI Asistan' : 'AI Kapalı';
-        if (this.dom.aiCoachPanel) {
-          this.dom.aiCoachPanel.style.display = this.aiEnabled ? 'block' : 'none';
+    this.dom.btnRegSubmit?.addEventListener('click', async () => {
+      soundFx.playButtonClick();
+      const name = (this.dom.inputRegName.value || '').trim();
+      const email = (this.dom.inputRegEmail.value || '').trim();
+      const pass = (this.dom.inputRegPassword.value || '').trim();
+      if (!name) return this.showAuthMsg('Lütfen adınızı ve soyadınızı girin.', 'error');
+      if (!email || !email.includes('@')) return this.showAuthMsg('Geçerli e-posta girin.', 'error');
+      if (pass.length < 3) return this.showAuthMsg('Şifre en az 3 karakter olmalıdır.', 'error');
+      try {
+        this.dom.btnRegSubmit.textContent = 'Kaydediliyor...';
+        const user = await userDb.registerUser(name, email, pass, 'dayi');
+        this.currentUser = user;
+        this.aiEnabled = this.hasAIAccess();
+        if (user?.token && networkManager.serverConnected) {
+          networkManager.identifyUser(user.token);
         }
-        this.updateAIAdvisor();
-      });
-    }
+        this.updateVIPState();
+        this.refreshCurrentGameViews();
+        const regNotice = this.isAdminUser()
+          ? '👑 Yönetici üyeliği oluşturuldu! Tüm oyunlarda Yapay Zeka desteği açık.'
+          : `✨ Hoş geldiniz ${name}! Üyeliğiniz oluşturuldu (otomatik dizme açık).`;
+        this.showAuthMsg(regNotice, 'success');
+        setTimeout(() => {
+          if (this.isAdminUser()) {
+            this.renderAdminUsersList();
+          } else {
+            this.dom.authModal.classList.add('hidden');
+          }
+          this.updateAIAdvisor();
+        }, 700);
+      } catch (err) {
+        this.showAuthMsg(err.message || 'Kayıt başarısız oldu.', 'error');
+      } finally {
+        this.dom.btnRegSubmit.textContent = '✨ Üyeliği Oluştur ve Başla';
+      }
+    });
 
-    // AI Apply Recommendation
-    if (this.dom.btnApplyAI) {
-      this.dom.btnApplyAI.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.applyAIRecommendation();
-      });
-    }
+    this.dom.btnAuthLogout?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      userDb.clearSession();
+      this.currentUser = null;
+      this.aiEnabled = false;
+      this.currentAdvice = null;
+      this.updateVIPState();
+      this.refreshCurrentGameViews();
+      this.openAuthModal();
+    });
 
-    // AI Auto-Arrange Istaka
-    if (this.dom.btnAISort) {
-      this.dom.btnAISort.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.sortHandAI();
-      });
-    }
+    this.dom.btnRefreshAdminUsers?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.renderAdminUsersList();
+    });
 
-    // Tile Sorting Buttons
-    if (this.dom.btnSortRuns) {
-      this.dom.btnSortRuns.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.sortHandRuns();
-      });
-    }
-    if (this.dom.btnSortPairs) {
-      this.dom.btnSortPairs.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.sortHandPairs();
-      });
-    }
-    if (this.dom.btnPhotoDemo) {
-      this.dom.btnPhotoDemo.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.loadPhotoDemoIstaka();
-      });
-    }
+    this.dom.btnToggleAI?.addEventListener('click', () => {
+      if (!this.isVIPUser()) return;
+      soundFx.playButtonClick();
+      this.aiEnabled = !this.aiEnabled;
+      this.dom.btnToggleAI.classList.toggle('active', this.aiEnabled);
+      this.dom.aiToggleLabel.textContent = this.aiEnabled ? 'AI Asistan' : 'AI Kapalı';
+      if (this.dom.aiCoachPanel) this.dom.aiCoachPanel.style.display = this.aiEnabled ? 'block' : 'none';
+      this.updateAIAdvisor();
+    });
 
-    // Batak Card Sorting Button
-    if (this.dom.btnSortCards) {
-      this.dom.btnSortCards.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.sortBatakCards();
-      });
-    }
+    this.dom.btnApplyAI?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.applyAIRecommendation();
+    });
 
-    // Game Over Action Buttons
-    if (this.dom.btnGameOverRestart) {
-      this.dom.btnGameOverRestart.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.hideGameOverModal();
-        this.startActiveGameMode();
-      });
-    }
-    if (this.dom.btnGameOverExitVR) {
-      this.dom.btnGameOverExitVR.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.hideGameOverModal();
-        this.scene.exitVR();
-      });
-    }
-    if (this.dom.btnGameOverMenu) {
-      this.dom.btnGameOverMenu.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.hideGameOverModal();
-        this.dom.menuModal.classList.remove('hidden');
-      });
-    }
+    this.dom.btnAISort?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.sortHandAI();
+    });
+    this.dom.btnSortRuns?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.sortHandRuns();
+    });
+    this.dom.btnSortPairs?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.sortHandPairs();
+    });
+    this.dom.btnPhotoDemo?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.loadPhotoDemoIstaka();
+    });
+    this.dom.btnSortCards?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.sortBatakCards();
+    });
 
-    // Single Player Menu Modal
+    // Game Over Actions
+    this.dom.btnGameOverRestart?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.hideGameOverModal();
+      if (this.isMultiplayerGuest()) {
+        this.appendLog('ℹ️ Yeni oyunu masa sahibi başlatabilir.');
+        return;
+      }
+      if (this.isMultiplayerHost()) {
+        networkManager.startGame(this.currentGameType, networkManager.maxPlayers);
+      }
+      this.startActiveGameMode();
+    });
+    this.dom.btnGameOverExitVR?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.hideGameOverModal();
+      this.scene.exitVR();
+    });
+    this.dom.btnGameOverMenu?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.hideGameOverModal();
+      this.dom.menuModal.classList.remove('hidden');
+    });
+
+    // Single Player Menu
     this.dom.btnMenu.addEventListener('click', () => {
       soundFx.playButtonClick();
       this.dom.menuModal.classList.remove('hidden');
     });
-
     this.dom.btnCloseMenu.addEventListener('click', () => {
       soundFx.playButtonClick();
       this.dom.menuModal.classList.add('hidden');
@@ -494,7 +988,9 @@ class AppManager {
     const selectOption = (type, el) => {
       soundFx.playButtonClick();
       this.currentGameType = type;
-      [this.dom.optBatak, this.dom.optOkey101, this.dom.optOkey, this.dom.optPisti].forEach(btn => btn?.classList.remove('selected'));
+      [this.dom.optBatak, this.dom.optOkey101, this.dom.optOkey, this.dom.optPisti].forEach((b) =>
+        b?.classList.remove('selected')
+      );
       el.classList.add('selected');
     };
 
@@ -510,32 +1006,52 @@ class AppManager {
       this.startActiveGameMode();
     });
 
-    // Multiplayer Modal Toggles (Requires Membership)
-    if (this.dom.btnMultiplayer) {
-      this.dom.btnMultiplayer.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        if (!this.currentUser) {
-          this.openAuthModal('🌐 Çok oyunculu odalara katılabilmek ve oda kurabilmek için lütfen önce üye girişi yapın veya yeni üyelik oluşturun.');
-          return;
-        }
-        if (this.dom.inputCreateName && !this.dom.inputCreateName.value) {
-          this.dom.inputCreateName.value = this.currentUser.name || '';
-        }
-        if (this.dom.inputJoinName && !this.dom.inputJoinName.value) {
-          this.dom.inputJoinName.value = this.currentUser.name || '';
-        }
-        this.dom.multiplayerModal.classList.remove('hidden');
-      });
-    }
+    // Multiplayer Modal (Direct Guest & Registered Play!)
+    this.dom.btnMultiplayer?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      const savedGuest = localStorage.getItem('vr52_guest_name');
+      const fallbackName = this.currentUser?.name || savedGuest || `Oyuncu_${Math.floor(100 + Math.random() * 899)}`;
+      if (this.dom.inputCreateName && (!this.dom.inputCreateName.value || this.dom.inputCreateName.value === 'Masa Sahibi')) {
+        this.dom.inputCreateName.value = fallbackName;
+      }
+      if (this.dom.inputJoinName && (!this.dom.inputJoinName.value || this.dom.inputJoinName.value === 'Misafir Oyuncu')) {
+        this.dom.inputJoinName.value = fallbackName;
+      }
+      if (this.dom.inputServerUrl && networkManager.customServerUrl) {
+        this.dom.inputServerUrl.value = networkManager.customServerUrl;
+      }
+      this.dom.multiplayerModal.classList.remove('hidden');
+      this.updateServerStatusBadge();
+      networkManager.listRooms().then(() => this.renderPublicRoomsList()).catch(() => this.renderPublicRoomsList());
+    });
 
     const closeMpModal = () => {
       soundFx.playButtonClick();
       this.dom.multiplayerModal.classList.add('hidden');
     };
-    if (this.dom.btnCloseMpModal) this.dom.btnCloseMpModal.addEventListener('click', closeMpModal);
-    if (this.dom.btnCloseMpModal2) this.dom.btnCloseMpModal2.addEventListener('click', closeMpModal);
+    this.dom.btnCloseMpModal?.addEventListener('click', closeMpModal);
+    this.dom.btnCloseMpModal2?.addEventListener('click', closeMpModal);
 
-    // Tab Switchers in Multiplayer
+    this.dom.btnReconnectServer?.addEventListener('click', async () => {
+      soundFx.playButtonClick();
+      const custom = this.dom.inputServerUrl?.value || '';
+      try {
+        await networkManager.setServerUrl(custom);
+        await networkManager.listRooms();
+        this.renderPublicRoomsList();
+      } catch (err) {
+        this.updateServerStatusBadge(err.message);
+      }
+    });
+
+    this.dom.btnRefreshRooms?.addEventListener('click', async () => {
+      soundFx.playButtonClick();
+      try {
+        await networkManager.listRooms();
+        this.renderPublicRoomsList();
+      } catch {}
+    });
+
     if (this.dom.tabCreateRoom && this.dom.tabJoinRoom) {
       this.dom.tabCreateRoom.addEventListener('click', () => {
         soundFx.playButtonClick();
@@ -551,48 +1067,50 @@ class AppManager {
         this.dom.tabCreateRoom.classList.remove('active');
         this.dom.viewJoinRoom.classList.remove('hidden');
         this.dom.viewCreateRoom.classList.add('hidden');
+        networkManager.listRooms().then(() => this.renderPublicRoomsList()).catch(() => {});
       });
     }
 
-    // 3D Spatial Voice Chat Mic Toggle (Requires Membership)
-    if (this.dom.btnVoice) {
-      this.dom.btnVoice.addEventListener('click', async () => {
-        soundFx.playButtonClick();
-        if (!this.currentUser) {
-          this.openAuthModal('🎙️ 3D Mekansal Sesli Sohbet özelliğini kullanabilmek için lütfen önce üye girişi yapın veya yeni üyelik oluşturun.');
-          return;
-        }
-        if (!spatialVoice.isVoiceActive) {
-          const success = await spatialVoice.initVoiceChat();
-          if (success) {
-            this.dom.btnVoice.classList.add('active');
-            if (this.dom.voiceIcon) this.dom.voiceIcon.textContent = '🎤';
-            if (this.dom.voiceLabel) this.dom.voiceLabel.textContent = 'Açık';
-            this.appendLog('🎙️ 3D Mekansal Sesli Sohbet bağlandı! Masadakiler sesini duyabilir.');
-          } else {
-            alert('Mikrofon erişimi sağlanamadı. Lütfen tarayıcı mikrofon iznini kontrol edin.');
-          }
-        } else {
-          const isMuted = spatialVoice.toggleMute();
-          if (isMuted) {
-            this.dom.btnVoice.classList.remove('active');
-            if (this.dom.voiceIcon) this.dom.voiceIcon.textContent = '🔇';
-            if (this.dom.voiceLabel) this.dom.voiceLabel.textContent = 'Sessiz';
-          } else {
-            this.dom.btnVoice.classList.add('active');
-            if (this.dom.voiceIcon) this.dom.voiceIcon.textContent = '🎤';
-            if (this.dom.voiceLabel) this.dom.voiceLabel.textContent = 'Açık';
-          }
-        }
-      });
-    }
+    // Voice / Mic & Audio Popover Controls (Works without forced login!)
+    this.dom.btnVoice?.addEventListener('click', () => this.toggleMicrophone());
 
-    // PWA Service Worker & Install Handler
+    this.dom.btnSound?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      soundFx.unlockAudio();
+      this.dom.audioPopover?.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (this.dom.audioPopover && !this.dom.audioPopover.classList.contains('hidden')) {
+        if (!e.target.closest('.audio-popover-wrap')) {
+          this.dom.audioPopover.classList.add('hidden');
+        }
+      }
+    });
+
+    this.dom.btnToggleSpeakerMute?.addEventListener('click', () => this.toggleSpeakerMute());
+
+    this.dom.sliderSpeakerVolume?.addEventListener('input', (e) => {
+      const val = Number(e.target.value) / 100;
+      spatialVoice.setSpeakerVolume(val);
+      this.syncAudioUI();
+    });
+
+    this.dom.btnTestMic?.addEventListener('click', async () => {
+      soundFx.unlockAudio();
+      const testing = await spatialVoice.toggleMicTest();
+      if (!testing && spatialVoice.lastError) {
+        alert(spatialVoice.lastError);
+      } else {
+        this.appendLog(testing ? '🔊 Mikrofon testi açık (kendi sesinizi hoparlörden duyuyorsunuz).' : '⏹️ Mikrofon testi durduruldu.');
+      }
+      this.syncAudioUI();
+    });
+
+    // PWA Install Handler
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(err => {
-          console.warn('PWA Service Worker fallback:', err);
-        });
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
       });
     }
 
@@ -600,178 +1118,602 @@ class AppManager {
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      if (this.dom.btnInstallPwa) {
-        this.dom.btnInstallPwa.style.display = 'inline-flex';
+      if (this.dom.btnInstallPwa) this.dom.btnInstallPwa.style.display = 'inline-flex';
+    });
+
+    this.dom.btnInstallPwa?.addEventListener('click', async () => {
+      soundFx.playButtonClick();
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') this.dom.btnInstallPwa.style.display = 'none';
+        deferredPrompt = null;
       }
     });
 
-    if (this.dom.btnInstallPwa) {
-      this.dom.btnInstallPwa.addEventListener('click', async () => {
-        soundFx.playButtonClick();
-        if (deferredPrompt) {
-          deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          if (outcome === 'accepted') {
-            this.dom.btnInstallPwa.style.display = 'none';
-          }
-          deferredPrompt = null;
-        }
-      });
-    }
-
-    // Multiplayer Game Selectors
-    document.querySelectorAll('.mp-choice-btn').forEach(btn => {
+    // Multiplayer Game & Player Count Selectors
+    document.querySelectorAll('.mp-choice-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         soundFx.playButtonClick();
-        document.querySelectorAll('.mp-choice-btn').forEach(b => b.classList.remove('selected'));
+        document.querySelectorAll('.mp-choice-btn').forEach((b) => b.classList.remove('selected'));
         btn.classList.add('selected');
         this.selectedCreateGame = btn.dataset.game;
       });
     });
 
-    // Multiplayer Player Count Selectors (2, 3, 4)
-    document.querySelectorAll('.mp-count-btn').forEach(btn => {
+    document.querySelectorAll('.mp-count-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         soundFx.playButtonClick();
-        document.querySelectorAll('.mp-count-btn').forEach(b => b.classList.remove('selected'));
+        document.querySelectorAll('.mp-count-btn').forEach((b) => b.classList.remove('selected'));
         btn.classList.add('selected');
         this.selectedCreateCount = parseInt(btn.dataset.count, 10);
       });
     });
 
-    // Submit Create Room
-    if (this.dom.btnSubmitCreateRoom) {
-      this.dom.btnSubmitCreateRoom.addEventListener('click', async () => {
-        soundFx.playButtonClick();
-        const playerName = this.dom.inputCreateName.value || 'Masa Sahibi';
-        const password = this.dom.inputCreatePassword.value || '';
-        try {
-          this.dom.btnSubmitCreateRoom.textContent = 'Oda Kuruluyor...';
-          await networkManager.createRoom({
-            gameType: this.selectedCreateGame,
-            maxPlayers: this.selectedCreateCount,
-            password,
-            playerName,
-            avatarId: this.selectedCreateAvatar
-          });
-          this.dom.multiplayerModal.classList.add('hidden');
-          this.showLobbyModal();
-        } catch (err) {
-          alert(`Oda oluşturulamadı: ${err.message}`);
-        } finally {
-          this.dom.btnSubmitCreateRoom.textContent = '🚀 Odayı Oluştur';
-        }
-      });
-    }
+    this.dom.btnSubmitCreateRoom?.addEventListener('click', async () => {
+      soundFx.playButtonClick();
+      const playerName = (this.dom.inputCreateName.value || '').trim() || 'Masa Sahibi';
+      localStorage.setItem('vr52_guest_name', playerName);
+      const password = this.dom.inputCreatePassword.value || '';
+      try {
+        this.dom.btnSubmitCreateRoom.textContent = 'Oda Kuruluyor...';
+        await networkManager.createRoom({
+          gameType: this.selectedCreateGame,
+          maxPlayers: this.selectedCreateCount,
+          password,
+          playerName,
+          avatarId: this.selectedCreateAvatar,
+          isVip: this.isVIPUser(),
+        });
+        this.dom.multiplayerModal.classList.add('hidden');
+        this.showLobbyModal();
+      } catch (err) {
+        alert(`Oda oluşturulamadı: ${err.message}`);
+      } finally {
+        this.dom.btnSubmitCreateRoom.textContent = '🚀 Odayı Oluştur';
+      }
+    });
 
-    // Submit Join Room
-    if (this.dom.btnSubmitJoinRoom) {
-      this.dom.btnSubmitJoinRoom.addEventListener('click', async () => {
-        soundFx.playButtonClick();
-        const roomCode = this.dom.inputJoinCode.value.trim();
-        const password = this.dom.inputJoinPassword.value.trim();
-        const playerName = this.dom.inputJoinName.value.trim() || 'Misafir';
+    this.dom.btnSubmitJoinRoom?.addEventListener('click', async () => {
+      soundFx.playButtonClick();
+      const roomCode = this.dom.inputJoinCode.value.trim();
+      const password = this.dom.inputJoinPassword.value.trim();
+      const playerName = (this.dom.inputJoinName.value || '').trim() || 'Misafir';
+      localStorage.setItem('vr52_guest_name', playerName);
 
-        if (!roomCode) {
-          alert('Lütfen 4 haneli oda kodunu girin!');
-          return;
-        }
+      if (!roomCode) {
+        alert('Lütfen 4 haneli oda kodunu girin!');
+        return;
+      }
 
-        try {
-          this.dom.btnSubmitJoinRoom.textContent = 'Bağlanılıyor...';
-          await networkManager.joinRoom({
-            roomCode,
-            password,
-            playerName,
-            avatarId: this.selectedJoinAvatar
-          });
-          this.dom.multiplayerModal.classList.add('hidden');
-          this.showLobbyModal();
-        } catch (err) {
-          alert(`Odaya bağlanılamadı: ${err.message}`);
-        } finally {
-          this.dom.btnSubmitJoinRoom.textContent = '🔗 Odaya Bağlan';
-        }
-      });
-    }
+      try {
+        this.dom.btnSubmitJoinRoom.textContent = 'Bağlanılıyor...';
+        await networkManager.joinRoom({
+          roomCode,
+          password,
+          playerName,
+          avatarId: this.selectedJoinAvatar,
+          isVip: this.isVIPUser(),
+        });
+        this.dom.multiplayerModal.classList.add('hidden');
+        this.showLobbyModal();
+      } catch (err) {
+        alert(`Odaya bağlanılamadı: ${err.message}`);
+      } finally {
+        this.dom.btnSubmitJoinRoom.textContent = '🔗 Odaya Bağlan';
+      }
+    });
 
-    // Copy Room Code
-    if (this.dom.btnCopyCode) {
-      this.dom.btnCopyCode.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        if (networkManager.roomCode) {
-          navigator.clipboard.writeText(networkManager.roomCode);
-          this.dom.btnCopyCode.textContent = 'Kopyalandı!';
-          setTimeout(() => {
-            this.dom.btnCopyCode.textContent = 'Kopyala';
-          }, 1500);
-        }
-      });
-    }
+    this.dom.btnCopyCode?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      if (networkManager.roomCode) {
+        navigator.clipboard?.writeText(networkManager.roomCode).catch(() => {});
+        this.dom.btnCopyCode.textContent = 'Kopyalandı!';
+        setTimeout(() => {
+          this.dom.btnCopyCode.textContent = 'Kopyala';
+        }, 1500);
+      }
+    });
 
     // Lobby Start Game (Host only)
-    if (this.dom.btnLobbyStartGame) {
-      this.dom.btnLobbyStartGame.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        this.dom.lobbyModal.classList.add('hidden');
-        this.currentGameType = networkManager.gameType;
-        networkManager.broadcast({ type: 'START_GAME', gameType: networkManager.gameType });
-        this.startActiveGameMode();
-      });
-    }
+    this.dom.btnLobbyStartGame?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.dom.lobbyModal.classList.add('hidden');
+      this.currentGameType = networkManager.gameType;
+      networkManager.startGame(networkManager.gameType, networkManager.maxPlayers);
+      this.startActiveGameMode();
+    });
 
     // Lobby Leave
-    if (this.dom.btnLobbyLeave) {
-      this.dom.btnLobbyLeave.addEventListener('click', () => {
-        soundFx.playButtonClick();
-        networkManager.disconnect();
-        this.dom.lobbyModal.classList.add('hidden');
-        this.appendLog('Odadan ayrıldınız.');
-      });
-    }
+    this.dom.btnLobbyLeave?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      networkManager.leaveRoom();
+      spatialVoice.closeAllPeers();
+      this.dom.lobbyModal.classList.add('hidden');
+      this.appendLog('Odadan ayrıldınız.');
+    });
 
-    // Ambiance audio toggle
+    // Ambiance toggle
     this.dom.btnAmbiance.addEventListener('click', () => {
       const nextState = !soundFx.ambianceEnabled;
       soundFx.setAmbiance(nextState);
       this.dom.ambianceIcon.textContent = nextState ? '☕' : '🔇';
       soundFx.playButtonClick();
-      this.appendLog(nextState ? 'Kıraathane çay ve zar sesleri açıldı.' : 'Kıraathane sesleri kapatıldı.');
     });
 
-    // Sound toggle
-    this.dom.btnSound.addEventListener('click', () => {
-      soundFx.enabled = !soundFx.enabled;
-      this.dom.soundIcon.textContent = soundFx.enabled ? '🔊' : '🔇';
+    // Summon walking Çaycı Hüseyin ("Çaylarrrrrrr!")
+    this.dom.btnOrderTea?.addEventListener('click', () => {
+      soundFx.unlockAudio();
       soundFx.playButtonClick();
+      this.scene?.summonCayciForTea();
+    });
+
+    // Mobile hamburger drawer & log visibility toggle
+    this.dom.btnMobileMenu?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      soundFx.playButtonClick();
+      this.dom.audioPopover?.classList.add('hidden');
+      this.dom.secondaryControls?.classList.toggle('open');
+    });
+
+    this.dom.btnToggleLog?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.dom.gameLogBox?.classList.toggle('mobile-open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (this.dom.secondaryControls?.classList.contains('open')) {
+        if (!e.target.closest('.top-controls')) {
+          this.dom.secondaryControls.classList.remove('open');
+        }
+      }
+    });
+
+    this.dom.secondaryControls?.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.dom.secondaryControls?.classList.remove('open');
+      });
+    });
+
+    // Scoreboard toggle & Leave game before completion
+    this.dom.btnScoreboard?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      if (!this.dom.scoreboardPanel) return;
+      const willShow = this.dom.scoreboardPanel.classList.contains('hidden');
+      this.dom.scoreboardPanel.classList.toggle('hidden', !willShow);
+      if (willShow) this.renderScoreboard();
+    });
+
+    this.dom.btnCloseScoreboard?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.dom.scoreboardPanel?.classList.add('hidden');
+    });
+
+    this.dom.btnLeaveGame?.addEventListener('click', () => {
+      soundFx.playButtonClick();
+      this.leaveCurrentGame();
     });
 
     // New Hand button
     this.dom.btnNewHand.addEventListener('click', () => {
       soundFx.playButtonClick();
+      if (this.isMultiplayerGuest()) {
+        this.appendLog('ℹ️ Yeni eli sadece masa sahibi başlatabilir.');
+        return;
+      }
       if (this.gameEngine) {
+        this.hideActionPanel();
         this.gameEngine.startNewRound();
       }
     });
   }
 
+  updateServerStatusBadge(errorHint = null) {
+    if (!this.dom.mpServerStatus) return;
+    if (networkManager.serverStatus === 'connected') {
+      this.dom.mpServerStatus.textContent = `🟢 Sunucu Bağlı (${networkManager.clientId})`;
+      this.dom.mpServerStatus.style.color = '#4ade80';
+    } else if (networkManager.serverStatus === 'connecting') {
+      this.dom.mpServerStatus.textContent = '🟡 Sunucuya bağlanılıyor...';
+      this.dom.mpServerStatus.style.color = '#facc15';
+    } else {
+      this.dom.mpServerStatus.textContent = errorHint
+        ? `🔴 Bağlantı Yok (${errorHint})`
+        : '🔴 Sunucu Bağlı Değil (npm run start ile sunucuyu açın)';
+      this.dom.mpServerStatus.style.color = '#f87171';
+    }
+  }
+
+  renderPublicRoomsList() {
+    if (!this.dom.mpPublicRoomsList) return;
+    const rooms = networkManager.publicRooms || [];
+    if (rooms.length === 0) {
+      this.dom.mpPublicRoomsList.innerHTML =
+        '<div style="color:#94a3b8; font-size:0.82rem; padding:8px;">Şu anda açık masa yok. Oda Kur sekmesinden yeni masa açabilirsiniz.</div>';
+      return;
+    }
+
+    const gameNames = { BATAK: '♠️ Batak', OKEY101: '💯 101', OKEY: '🀄 Okey', PISTI: '🃏 Pişti' };
+    this.dom.mpPublicRoomsList.innerHTML = '';
+    rooms.forEach((r) => {
+      const row = document.createElement('div');
+      row.className = 'mp-room-item';
+      row.innerHTML = `
+        <span><strong>${r.code}</strong> • ${gameNames[r.gameType] || r.gameType} • ${r.hostName}</span>
+        <span style="color:${r.started ? '#f87171' : '#4ade80'}; font-weight:700;">
+          ${r.hasPassword ? '🔒 ' : ''}${r.playerCount}/${r.maxPlayers} ${r.started ? '(Başladı)' : 'Katıl'}
+        </span>
+      `;
+      row.onclick = () => {
+        soundFx.playButtonClick();
+        if (this.dom.inputJoinCode) this.dom.inputJoinCode.value = r.code;
+      };
+      this.dom.mpPublicRoomsList.appendChild(row);
+    });
+  }
+
   setupMultiplayerListeners() {
     networkManager.onEvent((event, data) => {
-      if (event === 'player_joined') {
-        soundFx.playCardDeal();
-        this.appendLog(`🎉 ${data.name} masaya oturdu!`);
-        this.renderLobbySlots();
-      } else if (event === 'player_disconnected') {
-        this.appendLog(`⚠️ Bir oyuncu masadan ayrıldı.`);
-        this.renderLobbySlots();
+      if (event === 'connection_status') {
+        this.updateServerStatusBadge(data.error);
+        if (data.status === 'connected' && this.currentUser?.token) {
+          networkManager.identifyUser(this.currentUser.token);
+        }
+      } else if (event === 'ai_access_updated') {
+        if (data.email && this.currentUser?.email?.toLowerCase() === data.email.toLowerCase()) {
+          this.currentUser.aiAccess = Boolean(data.aiAccess);
+          userDb.saveSession(this.currentUser);
+          this.aiEnabled = this.hasAIAccess();
+          this.updateVIPState();
+          this.refreshCurrentGameViews();
+          this.appendLog(
+            this.hasAIAccess()
+              ? '🤖 Yönetici tarafından hesabınıza Yapay Zeka desteği yetkisi tanımlandı!'
+              : '🔒 Hesabınızdaki Yapay Zeka desteği yetkisi yönetici tarafından kaldırıldı.'
+          );
+        }
+      } else if (event === 'rooms_list') {
+        this.renderPublicRoomsList();
       } else if (event === 'room_updated') {
         this.renderLobbySlots();
+        spatialVoice.syncPeersWithRoom(data.players);
+      } else if (event === 'host_changed') {
+        if (data.isMeHost) {
+          this.appendLog('👑 Önceki masa sahibi ayrıldığı için masa yönetimi size geçti!');
+          if (this.gameEngine) {
+            this.syncHostStateToGuests({ type: 'host_sync' });
+          }
+        }
+        this.renderLobbySlots();
+      } else if (event === 'player_disconnected') {
+        this.appendLog(`⚠️ ${data.playerName || 'Bir oyuncu'} masadan ayrıldı. Koltuğu bot devraldı.`);
+        if (this.isMultiplayerHost() && this.gameEngine && typeof data.seatIndex === 'number') {
+          const p = this.gameEngine.players[data.seatIndex];
+          if (p) {
+            p.isBot = true;
+            p.name = `${p.name} (Bot)`;
+            if (this.gameEngine.gameState === 'BIDDING' && this.gameEngine.bidTurn === p.id) {
+              this.gameEngine.checkBidTurn?.();
+            } else {
+              this.gameEngine.checkTurnAction?.();
+            }
+            this.syncHostStateToGuests({ type: 'player_bot_takeover', seatIndex: p.id });
+            this.refreshCurrentGameViews();
+          }
+        }
+        this.renderLobbySlots();
+      } else if (event === 'host_disconnected') {
+        this.appendLog(`⚠️ ${data.message || 'Sunucu bağlantısı kesildi.'}`);
       } else if (event === 'game_started_by_host') {
         this.dom.lobbyModal.classList.add('hidden');
         this.currentGameType = data.gameType || networkManager.gameType;
-        this.startActiveGameMode();
+        if (!networkManager.isHost) {
+          this.prepareGuestGameView(this.currentGameType);
+        }
+      } else if (event === 'network_action') {
+        this.handleHostIncomingPlayerAction(data);
+      } else if (event === 'game_state') {
+        if (!networkManager.isHost) {
+          this.applyRemoteGameSnapshot(data.snapshot, data.event);
+        }
       }
     });
+  }
+
+  // --- HOST RECEIVES ACTION FROM REMOTE GUEST ---
+  handleHostIncomingPlayerAction(pkt) {
+    if (!this.isMultiplayerHost() || !this.gameEngine) return;
+    const seat = pkt.fromSeat;
+    const action = pkt.actionType;
+    const payload = pkt.payload || {};
+
+    switch (action) {
+      case 'BATAK_BID':
+        this.gameEngine.submitBid?.(seat, Number(payload.bid) || 0);
+        break;
+      case 'BATAK_TRUMP':
+        this.gameEngine.setTrump?.(seat, payload.suit);
+        break;
+      case 'PLAY_CARD':
+        this.gameEngine.playCard?.(seat, payload.cardId);
+        break;
+      case 'DRAW_STACK':
+        this.gameEngine.drawFromStack?.(seat);
+        break;
+      case 'DRAW_DISCARD':
+        this.gameEngine.drawFromDiscard?.(seat);
+        break;
+      case 'DISCARD_TILE':
+        this.gameEngine.discardTile?.(seat, payload.tileId);
+        break;
+      case 'OPEN_101':
+        this.gameEngine.openHand?.(seat);
+        break;
+    }
+  }
+
+  syncHostStateToGuests(eventMeta = null) {
+    if (!this.isMultiplayerHost() || !this.gameEngine?.getSnapshot) return;
+    networkManager.broadcastGameState(this.gameEngine.getSnapshot(), eventMeta);
+  }
+
+  // --- GUEST INITIALIZES LOCAL VIEW BEFORE RECEIVING FIRST SNAPSHOT ---
+  prepareGuestGameView(gameType) {
+    this.resetActiveEngine();
+    this.currentGameType = gameType;
+    this.scene.setGameModeView(gameType);
+
+    if (gameType === 'BATAK') {
+      this.dom.hudGameName.textContent = 'İhaleli Batak (Çok Oyunculu)';
+      this.dom.trumpContainer.style.display = 'flex';
+      this.dom.trumpInfoLabel.textContent = 'Koz';
+      this.gameEngine = new BatakGameEngine('IHALELI', 10);
+      if (this.dom.scoreboardPanel && window.innerWidth > 960) {
+        this.dom.scoreboardPanel.classList.remove('hidden');
+      }
+    } else if (gameType === 'OKEY101') {
+      this.dom.hudGameName.textContent = '101 Okey (Çok Oyunculu)';
+      this.dom.trumpContainer.style.display = 'flex';
+      this.dom.trumpInfoLabel.textContent = 'Okey';
+      this.gameEngine = new Okey101GameEngine(3);
+    } else if (gameType === 'OKEY') {
+      this.dom.hudGameName.textContent = 'Klasik Okey (Çok Oyunculu)';
+      this.dom.trumpContainer.style.display = 'flex';
+      this.dom.trumpInfoLabel.textContent = 'Okey';
+      this.gameEngine = new OkeyGameEngine('KLASIK', 20);
+    } else {
+      this.dom.hudGameName.textContent = 'Pişti (Çok Oyunculu)';
+      this.dom.trumpContainer.style.display = 'none';
+      const maxP = networkManager.maxPlayers || 2;
+      this.gameEngine = new PistiGameEngine(maxP, 101);
+    }
+
+    this.updateGameControls(gameType);
+    this.dom.hudStatus.textContent = 'Masa sahibinden veri bekleniyor...';
+  }
+
+  // --- GUEST APPLIES AUTHORITATIVE STATE FROM HOST ---
+  applyRemoteGameSnapshot(snapshot, evt = null) {
+    if (!snapshot) return;
+    if (!this.gameEngine || this.currentGameType !== snapshot.gameType) {
+      this.prepareGuestGameView(snapshot.gameType);
+    }
+
+    const prevMyHand = this.getMyPlayer()?.hand ? [...this.getMyPlayer().hand] : [];
+    const wasRoundWinnerShown = this.gameEngine.gameState === 'GAME_OVER';
+
+    this.gameEngine.applySnapshot(snapshot);
+
+    // Preserve guest's manual Istaka slot positions!
+    if (this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101') {
+      const myPlayer = this.getMyPlayer();
+      if (myPlayer) {
+        syncHandIstakaSlots(myPlayer.hand, prevMyHand);
+      }
+    }
+
+    // Visual avatars mapped relative to guest's seated viewpoint
+    const visualPlayers = this.toVisualArray(this.gameEngine.players).map((p, i) =>
+      p || { name: `Oyuncu ${i + 1}`, avatarId: 'dayi' }
+    );
+    this.scene.updateTableAvatars(visualPlayers);
+    spatialVoice.syncPeersWithRoom(networkManager.roomPlayers);
+
+    // Trigger remote animations / sounds cleanly
+    if (evt?.type === 'deal_complete') {
+      soundFx.playCardShuffle();
+      this.hideGameOverModal();
+    } else if (evt?.type === 'trump_chosen') {
+      soundFx.playTrumpFanfare();
+    } else if (evt?.type === 'pisti_event') {
+      soundFx.playPistiChime();
+      this.triggerVictoryCelebration(0.5);
+    } else if (evt?.type === 'tile_drawn') {
+      soundFx.playOkeyTileSlide();
+    } else if (evt?.type === 'hand_opened') {
+      soundFx.playTrumpFanfare();
+    } else if (evt?.type === 'card_played' && evt.card) {
+      const vSeat = this.toVisualSeat(evt.playerIndex);
+      if (vSeat !== 0) {
+        this.scene.animateCardPlay(evt.card, vSeat, null, () => this.refreshCurrentGameViews());
+      }
+    } else if (evt?.type === 'tile_discarded' && evt.tile) {
+      const vSeat = this.toVisualSeat(evt.playerIndex);
+      if (vSeat !== 0) {
+        this.scene.animateTileDiscard(evt.tile, vSeat, () => this.renderOkeyDiscardsHelper());
+      }
+    } else if (evt?.type === 'match_winner' && evt.winner && !wasRoundWinnerShown) {
+      soundFx.playOkeyWinSlam();
+      this.triggerVictoryCelebration(1.0);
+      this.showGameOverModal({
+        winnerName: evt.winner.name,
+        details: `${this.currentGameType} karşılaşması tamamlandı! Şampiyon: ${evt.winner.name}`,
+        gameType: this.currentGameType,
+      });
+    }
+
+    this.refreshCurrentGameViews();
+  }
+
+  refreshCurrentGameViews() {
+    if (!this.gameEngine) return;
+    const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+
+    if (this.currentGameType === 'BATAK') {
+      const suit = SUITS[this.gameEngine.trumpSuit] || SUITS.S;
+      this.dom.hudTrump.innerHTML = `<span style="color:${suit.isRed ? '#ef4444' : '#60a5fa'}">${suit.symbol} ${suit.name}</span>`;
+      const isMyTurn = this.gameEngine.gameState === 'PLAYING' && this.gameEngine.currentTurn === mySeat;
+      const legalIds = isMyTurn ? this.gameEngine.getLegalCards(mySeat).map((c) => c.id) : null;
+      const recId = this.hasAIAccess() && this.aiEnabled ? this.currentAdvice?.recommendedCard?.id || null : null;
+      this.scene.renderPlayerHand(myPlayer?.hand || [], legalIds, recId);
+      this.scene.renderOpponentHands(this.toVisualArray(this.gameEngine.players));
+      const visualTrick = (this.gameEngine.currentTrick || []).map((tc) => ({
+        ...tc,
+        playerIndex: this.toVisualSeat(tc.playerIndex, 4),
+      }));
+      this.scene.renderTableCards(visualTrick);
+      this.updateBatakHUD();
+
+      if (this.gameEngine.gameState === 'BIDDING' && this.gameEngine.bidTurn === mySeat) {
+        this.showBatakBiddingUI(this.gameEngine.highestBid);
+        this.scene.showBiddingButtonsInVR(this.gameEngine.highestBid, (bid) => {
+          this.dispatchBatakBid(bid);
+          this.hideActionPanel();
+        });
+      } else if (this.gameEngine.gameState === 'CHOOSE_TRUMP' && this.gameEngine.highestBidderIndex === mySeat) {
+        this.showTrumpSelectionUI();
+        this.scene.showTrumpSelectionButtonsInVR((s) => {
+          this.dispatchBatakTrump(s);
+          this.hideActionPanel();
+        });
+      } else if (this.gameEngine.gameState === 'ROUND_OVER') {
+        this.showBatakRoundEndUI();
+      } else {
+        this.hideActionPanel();
+        this.scene.clearVRButtons();
+      }
+    } else if (this.currentGameType === 'PISTI') {
+      const total = this.getTotalPlayersCount();
+      const recId = this.hasAIAccess() && this.aiEnabled ? this.currentAdvice?.recommendedCard?.id || null : null;
+      this.scene.renderPlayerHand(myPlayer?.hand || [], null, recId);
+      this.scene.renderOpponentHands(this.toVisualArray(this.gameEngine.players));
+      const visualTable = (this.gameEngine.tableCards || []).map((tc) => ({
+        ...tc,
+        playerIndex: tc.playerIndex !== undefined ? this.toVisualSeat(tc.playerIndex, total) : undefined,
+      }));
+      this.scene.renderTableCards(visualTable);
+      this.updatePistiHUD();
+    } else if (this.currentGameType === 'OKEY') {
+      const okey = this.gameEngine.okeyTileInfo;
+      if (okey) {
+        this.dom.hudTrump.innerHTML = `<span style="color:${okey.colorHex}">★ ${okey.colorName} ${okey.number}</span>`;
+      }
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
+      this.scene.renderCenterOkeyStack(this.gameEngine.drawStack.length, this.gameEngine.gostergeTile);
+      this.renderOkeyDiscardsHelper();
+      this.updateOkeyHUD();
+
+      if (this.gameEngine.currentTurn === mySeat && this.gameEngine.turnPhase === 'DRAW') {
+        this.showOkeyDrawUI();
+      } else {
+        this.hideActionPanel();
+        this.scene.clearVRButtons();
+      }
+    } else if (this.currentGameType === 'OKEY101') {
+      const okey = this.gameEngine.okeyTileInfo;
+      if (okey) {
+        this.dom.hudTrump.innerHTML = `<span style="color:${okey.colorHex}">★ ${okey.colorName} ${okey.number}</span>`;
+      }
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
+      this.scene.renderCenterOkeyStack(this.gameEngine.drawStack.length, this.gameEngine.gostergeTile);
+      this.renderOkeyDiscardsHelper();
+      this.scene.render101OpenedPers(this.gameEngine.tableOpenedPers || []);
+      this.updateOkey101HUD();
+
+      if (this.gameEngine.currentTurn === mySeat && this.gameEngine.turnPhase === 'DRAW') {
+        this.showOkey101DrawUI(true);
+      } else if (this.gameEngine.currentTurn === mySeat && this.gameEngine.turnPhase === 'DISCARD') {
+        const { totalPoints } = this.gameEngine.calculateHandPerPoints(myPlayer);
+        this.showOkey101DiscardUI(!myPlayer.hasOpened && totalPoints >= 101);
+      } else {
+        this.hideActionPanel();
+        this.scene.clearVRButtons();
+      }
+    }
+
+    this.updateAIAdvisor();
+  }
+
+  // --- DISPATCHERS (Works identically for Solo, Multiplayer Host, and Multiplayer Guest) ---
+  dispatchBatakBid(bidVal) {
+    const mySeat = this.getMySeat();
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('BATAK_BID', { bid: bidVal });
+    } else {
+      this.gameEngine?.submitBid(mySeat, bidVal);
+    }
+  }
+
+  dispatchBatakTrump(suit) {
+    const mySeat = this.getMySeat();
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('BATAK_TRUMP', { suit });
+    } else {
+      this.gameEngine?.setTrump(mySeat, suit);
+    }
+  }
+
+  dispatchPlayCard(cardId) {
+    const mySeat = this.getMySeat();
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('PLAY_CARD', { cardId });
+    } else {
+      this.gameEngine?.playCard(mySeat, cardId);
+    }
+  }
+
+  dispatchOkeyDrawStack() {
+    const mySeat = this.getMySeat();
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('DRAW_STACK', {});
+    } else {
+      this.gameEngine?.drawFromStack(mySeat);
+    }
+    this.hideActionPanel();
+  }
+
+  dispatchOkeyDrawDiscard() {
+    const mySeat = this.getMySeat();
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('DRAW_DISCARD', {});
+    } else {
+      this.gameEngine?.drawFromDiscard(mySeat);
+    }
+    this.hideActionPanel();
+  }
+
+  dispatchOkeyDiscard(tileId) {
+    const mySeat = this.getMySeat();
+    this.setSelectedTile(-1);
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('DISCARD_TILE', { tileId });
+    } else {
+      this.gameEngine?.discardTile(mySeat, tileId);
+    }
+    this.hideActionPanel();
+  }
+
+  dispatchOkey101Open() {
+    const mySeat = this.getMySeat();
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('OPEN_101', {});
+    } else {
+      this.gameEngine?.openHand(mySeat);
+    }
+    this.hideActionPanel();
   }
 
   showLobbyModal() {
@@ -780,12 +1722,9 @@ class AppManager {
     const gameTitles = { BATAK: 'İhaleli Batak', OKEY101: '101 Okey', OKEY: 'Klasik Okey', PISTI: 'Pişti' };
     this.dom.lobbyGameTag.textContent = `${gameTitles[networkManager.gameType] || networkManager.gameType} • ${networkManager.maxPlayers} Kişilik`;
 
-    if (!networkManager.isHost) {
-      this.dom.btnLobbyStartGame.style.display = 'none';
-    } else {
-      this.dom.btnLobbyStartGame.style.display = 'inline-flex';
+    if (this.dom.btnLobbyStartGame) {
+      this.dom.btnLobbyStartGame.style.display = networkManager.isHost ? 'inline-flex' : 'none';
     }
-
     this.renderLobbySlots();
   }
 
@@ -797,11 +1736,11 @@ class AppManager {
     const players = networkManager.roomPlayers || [];
 
     for (let s = 0; s < max; s++) {
-      const p = players.find(player => player.seat === s);
+      const p = players.find((player) => (player.seatIndex ?? player.seat) === s);
       const slot = document.createElement('div');
 
       if (p) {
-        const avObj = AVAILABLE_AVATARS.find(a => a.id === p.avatarId) || AVAILABLE_AVATARS[0];
+        const avObj = AVAILABLE_AVATARS.find((a) => a.id === p.avatarId) || AVAILABLE_AVATARS[0];
         slot.className = 'lobby-player-slot occupied';
         slot.innerHTML = `
           <div class="slot-avatar">${avObj.icon}</div>
@@ -826,47 +1765,51 @@ class AppManager {
 
   startActiveGameMode() {
     this.hideGameOverModal();
-    if (this.currentGameType === 'BATAK') {
-      this.startBatakGame();
-    } else if (this.currentGameType === 'OKEY101') {
-      this.startOkey101Game();
-    } else if (this.currentGameType === 'OKEY') {
-      this.startOkeyGame();
-    } else {
-      this.startPistiGame();
-    }
+    if (this.currentGameType === 'BATAK') this.startBatakGame();
+    else if (this.currentGameType === 'OKEY101') this.startOkey101Game();
+    else if (this.currentGameType === 'OKEY') this.startOkeyGame();
+    else this.startPistiGame();
   }
 
-  // Get active seated players (syncs multiplayer players + fills remainder with bots)
   getActiveSeatedPlayers(count = 4) {
     const defaultBots = [
-      { name: 'Ahmet Dayı', avatarId: 'kasketli' },
-      { name: 'Mehmet Abi', avatarId: 'ekoseli' },
-      { name: 'Ali Kaptan', avatarId: 'ali' },
-      { name: 'Ayşe Hanım', avatarId: 'ayse' }
+      { name: 'Ahmet Dayı', avatarId: 'dayi' },
+      { name: 'Hayrettin Abi', avatarId: 'hayrettin' },
+      { name: 'Serdar Bey', avatarId: 'serdar' },
+      { name: 'Ayşe Hanım', avatarId: 'ayse' },
     ];
 
     const result = [];
     for (let i = 0; i < count; i++) {
       if (networkManager.isConnected && networkManager.roomPlayers) {
-        const mpPlayer = networkManager.roomPlayers.find(p => p.seat === i);
+        const mpPlayer = networkManager.roomPlayers.find((p) => (p.seatIndex ?? p.seat) === i);
         if (mpPlayer) {
           result.push({
             name: mpPlayer.name,
-            avatarId: mpPlayer.avatarId,
+            avatarId: mpPlayer.avatarId || 'dayi',
             isBot: false,
-            isLocal: i === networkManager.localPlayerId
+            clientId: mpPlayer.clientId,
+            isLocal: i === networkManager.localPlayerId,
           });
           continue;
         }
+        // Empty multiplayer seat -> Bot
+        const bot = defaultBots[i % defaultBots.length];
+        result.push({
+          name: `${bot.name} (Bot)`,
+          avatarId: bot.avatarId,
+          isBot: true,
+          isLocal: false,
+        });
+        continue;
       }
 
       if (i === 0) {
         result.push({
-          name: this.currentUser?.name || this.dom.inputCreateName?.value || 'Siz',
-          avatarId: this.selectedCreateAvatar || 'kasketli',
+          name: this.currentUser?.name || localStorage.getItem('vr52_guest_name') || 'Siz',
+          avatarId: this.selectedCreateAvatar || 'dayi',
           isBot: false,
-          isLocal: true
+          isLocal: true,
         });
       } else {
         const bot = defaultBots[(i - 1) % defaultBots.length];
@@ -874,7 +1817,7 @@ class AppManager {
           name: bot.name,
           avatarId: bot.avatarId,
           isBot: true,
-          isLocal: false
+          isLocal: false,
         });
       }
     }
@@ -888,37 +1831,33 @@ class AppManager {
       this.gameEngine = null;
     }
     this.hideActionPanel();
-    if (this.scene) {
-      this.scene.resetSceneObjects();
-    }
-    this.selectedTileIndex = -1;
+    if (this.scene) this.scene.resetSceneObjects();
+    this.setSelectedTile(-1);
   }
 
-  // ==========================================
-  // SECRET AI ADVISOR & ASSISTANT (VIP MASTER ONLY)
-  // ==========================================
+  // --- ADMIN / AUTHORIZED AI ADVISOR (Strictly mchtkrkmz@gmail.com or admin-granted member) ---
   updateAIAdvisor() {
-    if (!this.isVIPUser() || !this.aiEnabled || !this.gameEngine) {
+    const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+
+    if (!this.hasAIAccess() || !this.aiEnabled || !this.gameEngine) {
+      this.currentAdvice = null;
       if (this.dom.aiCoachPanel) this.dom.aiCoachPanel.style.display = 'none';
-      if (this.scene) {
+      if (this.scene && myPlayer) {
         if (this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101') {
-          if (this.gameEngine && this.gameEngine.players && this.gameEngine.players[0]) {
-            this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand, -1);
-          }
+          this.scene.renderPlayerIstaka(myPlayer.hand, -1, this.canAutoSort());
         } else if (this.currentGameType === 'BATAK') {
-          if (this.gameEngine && this.gameEngine.players && this.gameEngine.players[0]) {
-            const isMyTurn = this.gameEngine.currentTurn === 0;
-            const playableCards = (isMyTurn && this.gameEngine.gameState === 'PLAYING')
-              ? this.gameEngine.getLegalCards(0).map(c => c.id)
+          const isMyTurn = this.gameEngine.currentTurn === mySeat;
+          const playableCards =
+            isMyTurn && this.gameEngine.gameState === 'PLAYING'
+              ? this.gameEngine.getLegalCards(mySeat).map((c) => c.id)
               : null;
-            this.scene.renderPlayerHand(this.gameEngine.players[0].hand, playableCards, null);
-          }
+          this.scene.renderPlayerHand(myPlayer.hand, playableCards, null);
         } else if (this.currentGameType === 'PISTI') {
-          if (this.gameEngine && this.gameEngine.players && this.gameEngine.players[0]) {
-            this.scene.renderPlayerHand(this.gameEngine.players[0].hand, null, null);
-          }
+          this.scene.renderPlayerHand(myPlayer.hand, null, null);
         }
       }
+      this.renderMobileHandDock();
       return;
     }
 
@@ -926,11 +1865,11 @@ class AppManager {
 
     let advice = null;
     if (this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101') {
-      advice = aiAdvisor.getOkeyAdvice(this.gameEngine, this.currentGameType === 'OKEY101');
+      advice = aiAdvisor.getOkeyAdvice(this.gameEngine, this.currentGameType === 'OKEY101', mySeat);
     } else if (this.currentGameType === 'PISTI') {
-      advice = aiAdvisor.getPistiAdvice(this.gameEngine);
+      advice = aiAdvisor.getPistiAdvice(this.gameEngine, mySeat);
     } else if (this.currentGameType === 'BATAK') {
-      advice = aiAdvisor.getBatakAdvice(this.gameEngine);
+      advice = aiAdvisor.getBatakAdvice(this.gameEngine, mySeat);
     }
 
     this.currentAdvice = advice;
@@ -938,89 +1877,93 @@ class AppManager {
       if (this.dom.aiCoachContent) {
         this.dom.aiCoachContent.innerHTML = '<div class="ai-coach-tip">Oyun analiz ediliyor...</div>';
       }
+      this.renderMobileHandDock();
       return;
     }
 
-    // Render 2D AI Coach Content
     if (this.dom.aiCoachContent) {
       let html = '';
       if (advice.gameType === 'OKEY' || advice.gameType === 'OKEY101') {
         const { completePers, nearPers, orphanTiles } = advice.analysis;
         html += `<div style="margin-bottom:6px;"><strong>🎯 Istaka Durumu:</strong> ${completePers.length} Hazır Per • ${nearPers.length} Bekleyen Grup • ${orphanTiles.length} Boşta Taş</div>`;
-
         if (advice.info101) {
           html += `<div style="margin-bottom:6px; color:#38bdf8;"><strong>📊 101 Puanı:</strong> ${advice.info101.perPoints} Puan ${advice.info101.canOpen ? '🌟 <em>(El Açabilirsiniz!)</em>' : `(Gereken: ${advice.info101.pointsLeft})`}</div>`;
         }
-
-        if (advice.drawAdvice && this.gameEngine.turnPhase === 'DRAW' && this.gameEngine.currentTurn === 0) {
+        if (advice.drawAdvice && this.gameEngine.turnPhase === 'DRAW' && this.gameEngine.currentTurn === mySeat) {
           html += `<div style="margin-bottom:6px; color:#22c55e;"><strong>${advice.drawAdvice.title}:</strong> ${advice.drawAdvice.text}</div>`;
         }
-
-        if (advice.bestDiscard && advice.bestDiscard.tile) {
+        if (advice.bestDiscard?.tile) {
           html += `<div style="color:#fde047;"><strong>💡 Tavsiye Atış:</strong> ${advice.bestDiscard.reason}</div>`;
         }
-      } else if (advice.gameType === 'PISTI') {
-        html = `<div>${advice.reason}</div>`;
-      } else if (advice.gameType === 'BATAK') {
+      } else {
         html = `<div>${advice.reason}</div>`;
       }
-
       this.dom.aiCoachContent.innerHTML = html;
     }
 
-    // Update 3D Highlights
-    if (this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101') {
-      const recIdx = advice.bestDiscard ? advice.bestDiscard.index : -1;
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand, recIdx);
-    } else if (this.currentGameType === 'PISTI') {
-      const recCardId = advice.recommendedCard ? advice.recommendedCard.id : null;
-      this.scene.renderPlayerHand(this.gameEngine.players[0].hand, null, recCardId);
-    } else if (this.currentGameType === 'BATAK') {
-      const isMyTurn = this.gameEngine.currentTurn === 0;
-      const playableCards = (isMyTurn && this.gameEngine.gameState === 'PLAYING')
-        ? this.gameEngine.getLegalCards(0).map(c => c.id)
-        : null;
-      const recCardId = advice.recommendedCard ? advice.recommendedCard.id : null;
-      this.scene.renderPlayerHand(this.gameEngine.players[0].hand, playableCards, recCardId);
+    if (myPlayer) {
+      if (this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101') {
+        const recIdx = advice.bestDiscard ? advice.bestDiscard.index : -1;
+        this.scene.renderPlayerIstaka(myPlayer.hand, recIdx, this.canAutoSort());
+      } else if (this.currentGameType === 'PISTI') {
+        this.scene.renderPlayerHand(myPlayer.hand, null, advice.recommendedCard?.id || null);
+      } else if (this.currentGameType === 'BATAK') {
+        const isMyTurn = this.gameEngine.currentTurn === mySeat;
+        const playableCards =
+          isMyTurn && this.gameEngine.gameState === 'PLAYING'
+            ? this.gameEngine.getLegalCards(mySeat).map((c) => c.id)
+            : null;
+        this.scene.renderPlayerHand(myPlayer.hand, playableCards, advice.recommendedCard?.id || null);
+      }
     }
+    this.renderMobileHandDock();
   }
 
   applyAIRecommendation() {
-    if (!this.currentAdvice || !this.gameEngine) return;
+    if (!this.hasAIAccess() || !this.currentAdvice || !this.gameEngine) return;
+    const mySeat = this.getMySeat();
 
     if (this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101') {
-      if (this.gameEngine.currentTurn !== 0) return;
-
+      if (this.gameEngine.currentTurn !== mySeat) return;
       if (this.gameEngine.turnPhase === 'DRAW') {
         if (this.currentAdvice.drawAdvice?.recommendedSource === 'DISCARD') {
-          this.gameEngine.drawFromDiscard(0);
+          this.dispatchOkeyDrawDiscard();
         } else {
-          this.gameEngine.drawFromStack(0);
+          this.dispatchOkeyDrawStack();
         }
-        this.hideActionPanel();
-      } else if (this.gameEngine.turnPhase === 'DISCARD') {
-        if (this.currentAdvice.bestDiscard && this.currentAdvice.bestDiscard.tile) {
-          this.gameEngine.discardTile(0, this.currentAdvice.bestDiscard.tile.id);
-          this.hideActionPanel();
-        }
+      } else if (this.gameEngine.turnPhase === 'DISCARD' && this.currentAdvice.bestDiscard?.tile) {
+        this.dispatchOkeyDiscard(this.currentAdvice.bestDiscard.tile.id);
       }
     } else if (this.currentGameType === 'PISTI') {
-      if (this.gameEngine.currentTurn === 0 && this.currentAdvice.recommendedCard) {
-        this.gameEngine.playCard(0, this.currentAdvice.recommendedCard.id);
+      if (this.gameEngine.currentTurn === mySeat && this.currentAdvice.recommendedCard) {
+        this.dispatchPlayCard(this.currentAdvice.recommendedCard.id);
       }
     } else if (this.currentGameType === 'BATAK') {
-      if (this.gameEngine.gameState === 'BIDDING' && this.gameEngine.bidTurn === 0) {
-        this.gameEngine.submitBid(0, this.currentAdvice.recommendedBid || 0);
+      if (this.gameEngine.gameState === 'BIDDING' && this.gameEngine.bidTurn === mySeat) {
+        this.dispatchBatakBid(this.currentAdvice.recommendedBid || 0);
         this.hideActionPanel();
-      } else if (this.gameEngine.gameState === 'PLAYING' && this.gameEngine.currentTurn === 0) {
+      } else if (this.gameEngine.gameState === 'PLAYING' && this.gameEngine.currentTurn === mySeat) {
         if (this.currentAdvice.recommendedCard) {
-          this.gameEngine.playCard(0, this.currentAdvice.recommendedCard.id);
+          this.dispatchPlayCard(this.currentAdvice.recommendedCard.id);
         }
       }
     }
   }
 
-  // --- 101 OKEY INTEGRATION ---
+  // --- OKEY DISCARDS HELPER (PERSPECTIVE ROTATED) ---
+  renderOkeyDiscardsHelper() {
+    if (!this.gameEngine || !this.gameEngine.discardPiles) return;
+    const mySeat = this.getMySeat();
+    const leftEngineSeat = this.getLeftEngineSeat();
+    const canDrawLeft =
+      this.gameEngine.currentTurn === mySeat &&
+      this.gameEngine.turnPhase === 'DRAW' &&
+      this.gameEngine.discardPiles[leftEngineSeat]?.length > 0;
+    const visualDiscards = this.toVisualArray(this.gameEngine.discardPiles).map((p) => p || []);
+    this.scene.renderOkeyDiscards(visualDiscards, canDrawLeft);
+  }
+
+  // --- 101 OKEY ---
   startOkey101Game() {
     this.resetActiveEngine();
     this.currentGameType = 'OKEY101';
@@ -1033,106 +1976,105 @@ class AppManager {
     soundFx.playOkeyTilesShuffle();
 
     const seatedPlayers = this.getActiveSeatedPlayers(4);
-    this.scene.updateTableAvatars(seatedPlayers);
+    this.scene.updateTableAvatars(this.toVisualArray(seatedPlayers));
 
     this.gameEngine = new Okey101GameEngine(3);
-    this.gameEngine.initPlayers(seatedPlayers.map(p => p.name));
-
-    this.gameEngine.onEvent((event, data) => {
-      this.handleOkey101Event(event, data);
-    });
-
+    this.gameEngine.initPlayers(seatedPlayers);
+    this.gameEngine.onEvent((event, data) => this.handleOkey101Event(event, data));
     this.gameEngine.startNewMatch();
   }
 
-  renderOkeyDiscardsHelper() {
-    if (!this.gameEngine || !this.gameEngine.discardPiles) return;
-    const canDrawLeft = (this.gameEngine.currentTurn === 0 && this.gameEngine.turnPhase === 'DRAW' && this.gameEngine.discardPiles[3]?.length > 0);
-    this.scene.renderOkeyDiscards(this.gameEngine.discardPiles, canDrawLeft);
-  }
-
   handleOkey101Event(event, data) {
+    const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'deal_complete') {
       const okey = data.okeyInfo;
       this.dom.hudTrump.innerHTML = `<span style="color:${okey.colorHex}">★ ${okey.colorName} ${okey.number}</span>`;
-
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
-      this.scene.renderOpponentIstakas(this.gameEngine.players);
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
       this.scene.renderCenterOkeyStack(data.drawStackCount, data.gosterge);
       this.renderOkeyDiscardsHelper();
       this.scene.render101OpenedPers(this.gameEngine.tableOpenedPers);
-
       this.updateOkey101HUD('Taşlar Dağıtıldı (21 Taş)');
       soundFx.playOkeyTileClick(1.0);
-
-      if (this.gameEngine.currentTurn === 0) {
+      if (this.gameEngine.currentTurn === mySeat) {
         this.updateOkey101HUD('🌟 SIRA SİZDE! İstiyorsanız el açın veya taş atın.');
         this.showOkey101DrawUI(false);
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'deal_complete' });
     } else if (event === 'tile_drawn') {
       soundFx.playOkeyTileSlide();
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
-      this.scene.renderOpponentIstakas(this.gameEngine.players);
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
       this.scene.renderCenterOkeyStack(this.gameEngine.drawStack.length, this.gameEngine.gostergeTile);
       this.renderOkeyDiscardsHelper();
 
-      if (data.playerIndex === 0) {
-        const { totalPoints } = this.gameEngine.calculateHandPerPoints(this.gameEngine.players[0]);
-        const canOpen = !this.gameEngine.players[0].hasOpened && totalPoints >= 101;
+      if (data.playerIndex === mySeat && myPlayer) {
+        const { totalPoints } = this.gameEngine.calculateHandPerPoints(myPlayer);
+        const canOpen = !myPlayer.hasOpened && totalPoints >= 101;
         this.updateOkey101HUD(`🌟 Taş çektiniz. Per Puanınız: ${totalPoints} ${canOpen ? '(Açabilirsiniz!)' : ''}`);
         this.showOkey101DiscardUI(canOpen);
       } else {
-        this.updateOkey101HUD(`${this.gameEngine.players[data.playerIndex].name} taş çekti.`);
+        this.updateOkey101HUD(`${this.gameEngine.players[data.playerIndex]?.name} taş çekti.`);
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'tile_drawn', playerIndex: data.playerIndex });
     } else if (event === 'hand_opened') {
       soundFx.playTrumpFanfare();
       this.triggerVictoryCelebration(0.5);
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
       this.scene.render101OpenedPers(this.gameEngine.tableOpenedPers);
-      this.updateOkey101HUD(`${this.gameEngine.players[data.playerIndex].name} ELİNİ AÇTI (${data.totalPoints} Puan)!`);
+      this.updateOkey101HUD(`${this.gameEngine.players[data.playerIndex]?.name} ELİNİ AÇTI (${data.totalPoints} Puan)!`);
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'hand_opened', playerIndex: data.playerIndex });
     } else if (event === 'tile_discarded') {
-      this.scene.animateTileDiscard(data.tile, data.playerIndex, () => {
-        this.renderOkeyDiscardsHelper();
-      });
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
-      this.scene.renderOpponentIstakas(this.gameEngine.players);
+      const vSeat = this.toVisualSeat(data.playerIndex, 4);
+      this.scene.animateTileDiscard(data.tile, vSeat, () => this.renderOkeyDiscardsHelper());
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'tile_discarded', playerIndex: data.playerIndex, tile: data.tile });
     } else if (event === 'turn_changed') {
       this.renderOkeyDiscardsHelper();
-      const isMyTurn = data.currentTurn === 0;
+      const isMyTurn = data.currentTurn === mySeat;
       if (isMyTurn) {
         this.updateOkey101HUD('🌟 SIRA SİZDE! Ortadan veya yandan taş çekin.');
         this.showOkey101DrawUI(true);
       } else {
-        this.updateOkey101HUD(`${this.gameEngine.players[data.currentTurn].name} düşünüyor...`);
+        this.updateOkey101HUD(`${this.gameEngine.players[data.currentTurn]?.name} düşünüyor...`);
         this.hideActionPanel();
         this.scene.clearVRButtons();
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'turn_changed', currentTurn: data.currentTurn });
     } else if (event === 'round_ended') {
       this.updateOkey101HUD('101 Eli Tamamlandı! Cezalar hesaplandı.');
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'round_ended' });
     } else if (event === 'match_winner') {
       this.updateOkey101HUD(`👑 101 ŞAMPİYONU: ${data.winner.name}`);
       soundFx.playOkeyWinSlam();
       this.triggerVictoryCelebration(1.0);
       this.showGameOverModal({
         winnerName: data.winner.name,
-        details: `101 Okey Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (Ceza Puanı: ${data.winner.penaltyScore ?? 0})`,
-        gameType: 'OKEY101'
+        details: `101 Okey Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (Ceza Puanı: ${data.winner.totalPenalty ?? 0})`,
+        gameType: 'OKEY101',
       });
+      this.syncHostStateToGuests({ type: 'match_winner', winner: data.winner });
     }
   }
 
   showOkey101DrawUI(canDraw) {
-    const leftDiscard = this.gameEngine.discardPiles[3];
-    const canDrawDiscard = leftDiscard.length > 0;
+    const myPlayer = this.getMyPlayer();
+    const leftSeat = this.getLeftEngineSeat();
+    const leftDiscard = this.gameEngine.discardPiles[leftSeat] || [];
+    const canDrawDiscard = canDraw && leftDiscard.length > 0;
     const topTile = canDrawDiscard ? leftDiscard[leftDiscard.length - 1] : null;
+    const topTileName = topTile ? `${topTile.colorName} ${topTile.number || 'Sahte'}` : '';
 
     this.dom.actionTitle.textContent = '101 Okey Hamle Seçin:';
     this.dom.actionButtonsContainer.innerHTML = '';
@@ -1141,54 +2083,51 @@ class AppManager {
       const drawStackBtn = document.createElement('button');
       drawStackBtn.className = 'action-chip';
       drawStackBtn.textContent = '🎲 Ortadan Taş Çek';
-      drawStackBtn.onclick = () => {
-        this.gameEngine.drawFromStack(0);
-        this.hideActionPanel();
-      };
+      drawStackBtn.onclick = () => this.dispatchOkeyDrawStack();
       this.dom.actionButtonsContainer.appendChild(drawStackBtn);
 
       if (canDrawDiscard && topTile) {
         const drawDiscardBtn = document.createElement('button');
         drawDiscardBtn.className = 'action-chip';
         drawDiscardBtn.style.background = '#15803d';
-        drawDiscardBtn.textContent = `📥 Yandan Al (${topTile.colorName} ${topTile.number || 'Sahte'})`;
-        drawDiscardBtn.onclick = () => {
-          this.gameEngine.drawFromDiscard(0);
-          this.hideActionPanel();
-        };
+        drawDiscardBtn.textContent = `📥 Yandan Al (${topTileName})`;
+        drawDiscardBtn.onclick = () => this.dispatchOkeyDrawDiscard();
         this.dom.actionButtonsContainer.appendChild(drawDiscardBtn);
       }
     }
 
-    const { totalPoints } = this.gameEngine.calculateHandPerPoints(this.gameEngine.players[0]);
-    const canOpen = !this.gameEngine.players[0].hasOpened && totalPoints >= 101;
+    const { totalPoints } = myPlayer ? this.gameEngine.calculateHandPerPoints(myPlayer) : { totalPoints: 0 };
+    const canOpen = myPlayer ? !myPlayer.hasOpened && totalPoints >= 101 : false;
 
     if (canOpen) {
       const openHandBtn = document.createElement('button');
       openHandBtn.className = 'action-chip';
       openHandBtn.style.background = '#d97706';
       openHandBtn.textContent = `🌟 Elini Aç (${totalPoints} Puan)`;
-      openHandBtn.onclick = () => {
-        this.gameEngine.openHand(0);
-        this.hideActionPanel();
-      };
+      openHandBtn.onclick = () => this.dispatchOkey101Open();
       this.dom.actionButtonsContainer.appendChild(openHandBtn);
     }
 
-    this.dom.actionPanel.classList.add('show');
+    if (this.dom.actionButtonsContainer.children.length > 0) {
+      this.dom.actionPanel.classList.add('show');
+    }
 
-    this.scene.showOkey101DrawButtonsInVR(
-      canDraw,
-      canDrawDiscard,
-      canOpen,
-      () => this.gameEngine.drawFromStack(0),
-      () => this.gameEngine.drawFromDiscard(0),
-      () => this.gameEngine.openHand(0)
-    );
+    // Exact signature match with scene.js!
+    if (canDraw) {
+      this.scene.showOkey101DrawButtonsInVR(
+        canDrawDiscard,
+        topTileName,
+        () => this.dispatchOkeyDrawStack(),
+        () => this.dispatchOkeyDrawDiscard(),
+        canOpen,
+        totalPoints,
+        () => this.dispatchOkey101Open()
+      );
+    }
   }
 
   showOkey101DiscardUI(canOpen) {
-    this.dom.actionTitle.textContent = 'Istakadan Atılacak Taşı Seçin:';
+    this.dom.actionTitle.textContent = 'Istakadan Atılacak Taşı Seçin (veya sağdaki tepsiye sürükleyin):';
     this.dom.actionButtonsContainer.innerHTML = '';
 
     if (canOpen) {
@@ -1196,57 +2135,63 @@ class AppManager {
       openHandBtn.className = 'action-chip';
       openHandBtn.style.background = '#d97706';
       openHandBtn.textContent = '🌟 Elini Aç (101)';
-      openHandBtn.onclick = () => {
-        this.gameEngine.openHand(0);
-        this.hideActionPanel();
-      };
+      openHandBtn.onclick = () => this.dispatchOkey101Open();
       this.dom.actionButtonsContainer.appendChild(openHandBtn);
     }
 
-    const sortAiBtn = document.createElement('button');
-    sortAiBtn.className = 'action-chip ai-btn';
-    sortAiBtn.textContent = '🧠 AI Akıllı Diz';
-    sortAiBtn.onclick = () => {
-      this.sortHandAI();
-    };
-    this.dom.actionButtonsContainer.appendChild(sortAiBtn);
+    if (this.hasAIAccess()) {
+      const sortAiBtn = document.createElement('button');
+      sortAiBtn.className = 'action-chip ai-btn';
+      sortAiBtn.textContent = '🧠 AI Akıllı Diz';
+      sortAiBtn.onclick = () => this.sortHandAI();
+      this.dom.actionButtonsContainer.appendChild(sortAiBtn);
+    }
 
-    const sortRunsBtn = document.createElement('button');
-    sortRunsBtn.className = 'action-chip';
-    sortRunsBtn.textContent = '📐 Seri Diz';
-    sortRunsBtn.onclick = () => {
-      this.sortHandRuns();
-    };
-    this.dom.actionButtonsContainer.appendChild(sortRunsBtn);
+    if (this.canAutoSort()) {
+      const sortRunsBtn = document.createElement('button');
+      sortRunsBtn.className = 'action-chip';
+      sortRunsBtn.textContent = '📐 Seri Diz';
+      sortRunsBtn.onclick = () => this.sortHandRuns();
+      this.dom.actionButtonsContainer.appendChild(sortRunsBtn);
+    }
 
-    this.dom.actionPanel.classList.add('show');
+    if (this.dom.actionButtonsContainer.children.length > 0) {
+      this.dom.actionPanel.classList.add('show');
+    } else {
+      this.dom.actionPanel.classList.remove('show');
+    }
   }
 
   updateOkey101HUD(customStatus = null) {
     const p = this.gameEngine.players;
-    const scores = p.map(player => ({
+    const mySeat = this.getMySeat();
+    const scores = p.map((player) => ({
       name: player.name,
       opened: player.hasOpened,
-      score: player.totalPenalty
+      score: player.totalPenalty,
     }));
 
-    const status = customStatus || (this.gameEngine.currentTurn === 0 ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
+    const status =
+      customStatus || (this.gameEngine.currentTurn === mySeat ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
     this.dom.hudStatus.textContent = status;
 
-    const advice = this.currentAdvice;
+    const advice = this.hasAIAccess() && this.aiEnabled ? this.currentAdvice : null;
     this.scene.updateHUD({
       title: `101 OKEY (${this.gameEngine.currentHand}/${this.gameEngine.totalHands}. El)`,
       status,
       trump: null,
       okeyTile: this.gameEngine.okeyTileInfo,
-      currentTurn: this.gameEngine.currentTurn,
+      currentTurn: this.toVisualSeat(this.gameEngine.currentTurn, 4),
       scores,
-      aiAdvice: advice?.bestDiscard ? `Tavsiye: ${advice.bestDiscard.tile.colorName} ${advice.bestDiscard.tile.number} Atın` : (advice?.info101?.tip || null),
-      aiDetail: advice?.bestDiscard?.reason || null
+      aiAdvice: advice?.bestDiscard
+        ? `Tavsiye: ${advice.bestDiscard.tile.colorName} ${advice.bestDiscard.tile.number} Atın`
+        : advice?.info101?.tip || null,
+      aiDetail: advice?.bestDiscard?.reason || null,
     });
+    this.renderScoreboard();
   }
 
-  // --- KLASIK OKEY INTEGRATION ---
+  // --- KLASİK OKEY ---
   startOkeyGame() {
     this.resetActiveEngine();
     this.currentGameType = 'OKEY';
@@ -1259,74 +2204,74 @@ class AppManager {
     soundFx.playOkeyTilesShuffle();
 
     const seatedPlayers = this.getActiveSeatedPlayers(4);
-    this.scene.updateTableAvatars(seatedPlayers);
+    this.scene.updateTableAvatars(this.toVisualArray(seatedPlayers));
 
     this.gameEngine = new OkeyGameEngine('KLASIK', 20);
-    this.gameEngine.initPlayers(seatedPlayers.map(p => p.name));
-
-    this.gameEngine.onEvent((event, data) => {
-      this.handleOkeyEvent(event, data);
-    });
-
+    this.gameEngine.initPlayers(seatedPlayers);
+    this.gameEngine.onEvent((event, data) => this.handleOkeyEvent(event, data));
     this.gameEngine.startNewMatch();
   }
 
   handleOkeyEvent(event, data) {
+    const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'deal_complete') {
       const okey = data.okeyInfo;
       this.dom.hudTrump.innerHTML = `<span style="color:${okey.colorHex}">★ ${okey.colorName} ${okey.number}</span>`;
-
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
-      this.scene.renderOpponentIstakas(this.gameEngine.players);
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
       this.scene.renderCenterOkeyStack(data.drawStackCount, data.gosterge);
       this.renderOkeyDiscardsHelper();
-
       this.updateOkeyHUD('Taşlar Dağıtıldı');
       soundFx.playOkeyTileClick(1.0);
-
-      if (this.gameEngine.currentTurn === 0) {
-        this.updateOkeyHUD('🌟 SIRA SİZDE! Istakanızdan atılacak taşı seçin.');
+      if (this.gameEngine.currentTurn === mySeat) {
+        this.updateOkeyHUD('🌟 SIRA SİZDE! Istakanızdan atılacak taşı seçin veya sağa sürükleyin.');
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'deal_complete' });
     } else if (event === 'tile_drawn') {
       soundFx.playOkeyTileSlide();
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
-      this.scene.renderOpponentIstakas(this.gameEngine.players);
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
       this.scene.renderCenterOkeyStack(this.gameEngine.drawStack.length, this.gameEngine.gostergeTile);
       this.renderOkeyDiscardsHelper();
 
-      if (data.playerIndex === 0) {
-        this.updateOkeyHUD('🌟 Taş çektiniz. Istakadan atılacak taşı seçin.');
+      if (data.playerIndex === mySeat) {
+        this.updateOkeyHUD('🌟 Taş çektiniz. Istakadan atılacak taşı seçin veya sağa sürükleyin.');
         this.hideActionPanel();
         this.scene.clearVRButtons();
       } else {
-        this.updateOkeyHUD(`${this.gameEngine.players[data.playerIndex].name} taş çekti.`);
+        this.updateOkeyHUD(`${this.gameEngine.players[data.playerIndex]?.name} taş çekti.`);
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'tile_drawn', playerIndex: data.playerIndex });
     } else if (event === 'tile_discarded') {
-      this.scene.animateTileDiscard(data.tile, data.playerIndex, () => {
-        this.renderOkeyDiscardsHelper();
-      });
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
-      this.scene.renderOpponentIstakas(this.gameEngine.players);
+      const vSeat = this.toVisualSeat(data.playerIndex, 4);
+      this.scene.animateTileDiscard(data.tile, vSeat, () => this.renderOkeyDiscardsHelper());
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'tile_discarded', playerIndex: data.playerIndex, tile: data.tile });
     } else if (event === 'turn_changed') {
       this.renderOkeyDiscardsHelper();
-      const isMyTurn = data.currentTurn === 0;
+      const isMyTurn = data.currentTurn === mySeat;
       if (isMyTurn) {
         this.updateOkeyHUD('🌟 SIRA SİZDE! Ortadan veya yandan taş çekin.');
         this.showOkeyDrawUI();
       } else {
-        this.updateOkeyHUD(`${this.gameEngine.players[data.currentTurn].name} düşünüyor...`);
+        this.updateOkeyHUD(`${this.gameEngine.players[data.currentTurn]?.name} düşünüyor...`);
         this.hideActionPanel();
         this.scene.clearVRButtons();
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'turn_changed', currentTurn: data.currentTurn });
     } else if (event === 'round_ended') {
       this.updateOkeyHUD('El Tamamlandı!');
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'round_ended' });
     } else if (event === 'match_winner') {
       this.updateOkeyHUD(`👑 ŞAMPİYON: ${data.winner.name}`);
       soundFx.playOkeyWinSlam();
@@ -1334,13 +2279,15 @@ class AppManager {
       this.showGameOverModal({
         winnerName: data.winner.name,
         details: `Klasik Okey Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name}`,
-        gameType: 'OKEY'
+        gameType: 'OKEY',
       });
+      this.syncHostStateToGuests({ type: 'match_winner', winner: data.winner });
     }
   }
 
   showOkeyDrawUI() {
-    const leftDiscard = this.gameEngine.discardPiles[3];
+    const leftSeat = this.getLeftEngineSeat();
+    const leftDiscard = this.gameEngine.discardPiles[leftSeat] || [];
     const canDrawDiscard = leftDiscard.length > 0;
     const topTile = canDrawDiscard ? leftDiscard[leftDiscard.length - 1] : null;
 
@@ -1350,10 +2297,7 @@ class AppManager {
     const drawStackBtn = document.createElement('button');
     drawStackBtn.className = 'action-chip';
     drawStackBtn.textContent = '🎲 Ortadan Taş Çek';
-    drawStackBtn.onclick = () => {
-      this.gameEngine.drawFromStack(0);
-      this.hideActionPanel();
-    };
+    drawStackBtn.onclick = () => this.dispatchOkeyDrawStack();
     this.dom.actionButtonsContainer.appendChild(drawStackBtn);
 
     if (canDrawDiscard && topTile) {
@@ -1361,10 +2305,7 @@ class AppManager {
       drawDiscardBtn.className = 'action-chip';
       drawDiscardBtn.style.background = '#15803d';
       drawDiscardBtn.textContent = `📥 Yandan Al (${topTile.colorName} ${topTile.number || 'Sahte'})`;
-      drawDiscardBtn.onclick = () => {
-        this.gameEngine.drawFromDiscard(0);
-        this.hideActionPanel();
-      };
+      drawDiscardBtn.onclick = () => this.dispatchOkeyDrawDiscard();
       this.dom.actionButtonsContainer.appendChild(drawDiscardBtn);
     }
 
@@ -1372,50 +2313,44 @@ class AppManager {
 
     this.scene.showOkeyDrawButtonsInVR(
       canDrawDiscard,
-      () => this.gameEngine.drawFromStack(0),
-      () => this.gameEngine.drawFromDiscard(0)
+      () => this.dispatchOkeyDrawStack(),
+      () => this.dispatchOkeyDrawDiscard()
     );
   }
 
-  // Smart AI Istaka Sorting: Groups complete pers, near pers, and orphans on the right
+  // --- ISTAKA ARRANGEMENT & REAL-LIFE DRAG-DROP ---
   sortHandAI() {
-    if (!this.gameEngine || !this.gameEngine.players || !this.gameEngine.players[0]) return;
-    const player = this.gameEngine.players[0];
+    if (!this.hasAIAccess()) return;
+    const player = this.getMyPlayer();
+    if (!player) return;
     const is101 = this.currentGameType === 'OKEY101';
-    const advice = aiAdvisor.getOkeyAdvice(this.gameEngine, is101);
-    if (!advice || !advice.analysis) return;
+    const advice = aiAdvisor.getOkeyAdvice(this.gameEngine, is101, this.getMySeat());
+    if (!advice?.analysis) return;
 
     const { completePers, nearPers, orphanTiles, okeys } = advice.analysis;
     const newHand = [];
-
-    // 1. Okey stones first
-    okeys.forEach(t => newHand.push(t));
-
-    // 2. Complete Pers
-    completePers.forEach(per => {
-      per.tiles.forEach(t => {
-        if (!newHand.some(h => h.id === t.id)) newHand.push(t);
-      });
+    okeys.forEach((t) => newHand.push(t));
+    completePers.forEach((per) =>
+      per.tiles.forEach((t) => {
+        if (!newHand.some((h) => h.id === t.id)) newHand.push(t);
+      })
+    );
+    nearPers.forEach((np) =>
+      np.tiles.forEach((t) => {
+        if (!newHand.some((h) => h.id === t.id)) newHand.push(t);
+      })
+    );
+    orphanTiles.forEach((t) => {
+      if (!newHand.some((h) => h.id === t.id)) newHand.push(t);
     });
-
-    // 3. Near Pers (2-tile waiting)
-    nearPers.forEach(np => {
-      np.tiles.forEach(t => {
-        if (!newHand.some(h => h.id === t.id)) newHand.push(t);
-      });
-    });
-
-    // 4. Orphan / Dead tiles to the right
-    orphanTiles.forEach(t => {
-      if (!newHand.some(h => h.id === t.id)) newHand.push(t);
-    });
-
-    // Any leftover tiles
-    player.hand.forEach(t => {
-      if (!newHand.some(h => h.id === t.id)) newHand.push(t);
+    player.hand.forEach((t) => {
+      if (!newHand.some((h) => h.id === t.id)) newHand.push(t);
     });
 
     player.hand = newHand;
+    arrangeHandTilesOnIstaka(player.hand, true);
+    this.setSelectedTile(-1);
+    this.scene.renderPlayerIstaka(player.hand, -1, true);
     soundFx.playOkeyTileSlide();
     soundFx.playOkeyStoneClack(0.8);
     this.updateAIAdvisor();
@@ -1423,104 +2358,150 @@ class AppManager {
   }
 
   loadPhotoDemoIstaka() {
-    if (!this.gameEngine) return;
+    if (!this.hasAIAccess()) return;
+    const player = this.getMyPlayer();
+    if (!player) return;
     const demoHand = createPhotoDemoHand();
-    this.gameEngine.players[0].hand = demoHand;
-    this.selectedTileIndex = -1;
-    this.scene.renderPlayerIstaka(demoHand);
+    player.hand = demoHand;
+    this.setSelectedTile(-1);
+    this.scene.renderPlayerIstaka(demoHand, -1, true);
     soundFx.playOkeyTilesShuffle();
-    this.appendLog('📸 Fotoğraftaki 15 taşlık örnek ıstaka dizilimi (seriler, perler ve çiftler) başarıyla yüklendi!');
+    this.appendLog('📸 Örnek ıstaka dizilimi yüklendi!');
     this.updateAIAdvisor();
   }
 
   sortHandRuns() {
-    if (!this.gameEngine) return;
-    const player = this.gameEngine.players[0];
+    if (!this.canAutoSort()) return;
+    const player = this.getMyPlayer();
+    if (!player) return;
     arrangeHandTilesOnIstaka(player.hand, true);
-    this.selectedTileIndex = -1;
-    this.scene.renderPlayerIstaka(player.hand);
+    this.setSelectedTile(-1);
+    this.scene.renderPlayerIstaka(player.hand, -1, true);
     soundFx.playOkeyTileSlide();
     soundFx.playOkeyStoneClack(0.8);
     this.updateAIAdvisor();
-    this.appendLog('📐 Taşlar serilere ve perlere göre fotoğraftaki gibi gruplanarak dizildi.');
+    this.appendLog('📐 Taşlar serilere ve perlere göre düzenli olarak dizildi.');
   }
 
   sortHandPairs() {
-    if (!this.gameEngine) return;
-    const player = this.gameEngine.players[0];
+    if (!this.canAutoSort()) return;
+    const player = this.getMyPlayer();
+    if (!player) return;
     player.hand.sort((a, b) => {
       if (a.isRealOkey) return -1;
       if (b.isRealOkey) return 1;
       if (a.number !== b.number) return a.number - b.number;
-      return a.colorKey.localeCompare(b.colorKey);
+      return (a.colorKey || '').localeCompare(b.colorKey || '');
     });
 
     const pairs = [];
+    const singles = [];
     const used = new Set();
-    for (let i = 0; i < player.hand.length - 1; i++) {
-      if (!used.has(i) && !used.has(i + 1) && player.hand[i].number === player.hand[i + 1].number) {
+    for (let i = 0; i < player.hand.length; i++) {
+      if (used.has(i)) continue;
+      if (i + 1 < player.hand.length && !used.has(i + 1) && player.hand[i].number === player.hand[i + 1].number) {
         pairs.push([player.hand[i], player.hand[i + 1]]);
         used.add(i);
         used.add(i + 1);
+      } else {
+        singles.push(player.hand[i]);
+        used.add(i);
       }
     }
-    const leftovers = player.hand.filter((_, idx) => !used.has(idx));
-    let t0Slot = 1;
-    let t1Slot = 1;
+
+    let t0 = 0;
+    let t1 = 0;
     pairs.forEach((pair, pIdx) => {
-      const tier = pIdx % 2;
-      let slot = tier === 0 ? t0Slot : t1Slot;
-      if (slot <= 10) {
-        pair[0]._istakaTier = tier;
-        pair[0]._istakaSlot = slot;
-        pair[1]._istakaTier = tier;
-        pair[1]._istakaSlot = slot + 1;
-        if (tier === 0) t0Slot += 3; // 1-slot gap
-        else t1Slot += 3;
-      }
-    });
-    leftovers.forEach((tile) => {
-      if (t0Slot <= 11) {
-        tile._istakaTier = 0;
-        tile._istakaSlot = t0Slot++;
-      } else if (t1Slot <= 11) {
-        tile._istakaTier = 1;
-        tile._istakaSlot = t1Slot++;
+      const preferTop = pIdx % 2 === 0;
+      if (preferTop && t0 + 2 <= ISTAKA_SLOTS_PER_TIER) {
+        pair[0]._istakaTier = 0;
+        pair[0]._istakaSlot = t0++;
+        pair[1]._istakaTier = 0;
+        pair[1]._istakaSlot = t0++;
+        if (t0 < ISTAKA_SLOTS_PER_TIER) t0++;
+      } else if (t1 + 2 <= ISTAKA_SLOTS_PER_TIER) {
+        pair[0]._istakaTier = 1;
+        pair[0]._istakaSlot = t1++;
+        pair[1]._istakaTier = 1;
+        pair[1]._istakaSlot = t1++;
+        if (t1 < ISTAKA_SLOTS_PER_TIER) t1++;
+      } else {
+        singles.push(pair[0], pair[1]);
       }
     });
 
-    this.selectedTileIndex = -1;
-    this.scene.renderPlayerIstaka(player.hand);
+    singles.forEach((t) => {
+      if (t0 < ISTAKA_SLOTS_PER_TIER) {
+        t._istakaTier = 0;
+        t._istakaSlot = t0++;
+      } else {
+        t._istakaTier = 1;
+        t._istakaSlot = Math.min(ISTAKA_SLOTS_PER_TIER - 1, t1++);
+      }
+    });
+
+    this.setSelectedTile(-1);
+    this.scene.renderPlayerIstaka(player.hand, -1, true);
     soundFx.playOkeyTileSlide();
     this.updateAIAdvisor();
     this.appendLog('👥 Taşlar sayılara ve çiftlere göre aralıklı dizildi.');
   }
 
+  handleTileDropToSlot(draggedTile, targetTier, targetSlot) {
+    const player = this.getMyPlayer();
+    if (!player) return;
+    const tileObj = draggedTile || player.hand[this.selectedTileIndex];
+    if (!tileObj) return;
+
+    const moved = moveTileToIstakaSlot(player.hand, tileObj.id, targetTier, targetSlot);
+    if (moved) {
+      this.setSelectedTile(-1);
+      this.scene.renderPlayerIstaka(player.hand, -1, this.canAutoSort());
+      soundFx.playOkeyTileSlide();
+      soundFx.playOkeyStoneClack(0.7);
+      this.hideActionPanel();
+      this.updateAIAdvisor();
+    }
+  }
+
+  handleTileDropToDiscard(draggedTile) {
+    const player = this.getMyPlayer();
+    if (!player) return;
+    const tileObj = draggedTile || player.hand[this.selectedTileIndex];
+    if (!tileObj) return;
+
+    const mySeat = this.getMySeat();
+    if (this.gameEngine.currentTurn === mySeat && this.gameEngine.turnPhase === 'DISCARD') {
+      this.dispatchOkeyDiscard(tileObj.id);
+    } else {
+      soundFx.playButtonClick();
+      this.scene.renderPlayerIstaka(player.hand, -1, this.canAutoSort());
+      this.appendLog('ℹ️ Taş atmak için sıranızda ve taş atma aşamasında olmalısınız.');
+    }
+  }
+
   handleUserTileSelected(tile) {
-    if (!this.gameEngine) return;
-    const player = this.gameEngine.players[0];
-    const tileIndex = player.hand.findIndex(t => t.id === tile.id);
+    const player = this.getMyPlayer();
+    if (!this.gameEngine || !player) return;
+    const tileIndex = player.hand.findIndex((t) => t.id === tile.id);
     if (tileIndex === -1) return;
 
+    const mySeat = this.getMySeat();
+
     if (this.selectedTileIndex === -1) {
-      // 1. First Tile Click -> Elevate and highlight on rack
-      this.selectedTileIndex = tileIndex;
+      this.setSelectedTile(tileIndex);
       soundFx.playButtonClick();
       this.scene.highlightTileOnRack(tileIndex);
       this.showTileSelectionActions(tile);
     } else if (this.selectedTileIndex === tileIndex) {
-      // 2. Clicked the SAME tile -> DISCARD IT if in discard phase
-      if (this.gameEngine.turnPhase === 'DISCARD' && this.gameEngine.currentTurn === 0) {
-        this.selectedTileIndex = -1;
-        this.gameEngine.discardTile(0, tile.id);
-        this.hideActionPanel();
+      if (this.gameEngine.turnPhase === 'DISCARD' && this.gameEngine.currentTurn === mySeat) {
+        this.dispatchOkeyDiscard(tile.id);
       } else {
-        this.selectedTileIndex = -1;
-        this.scene.renderPlayerIstaka(player.hand);
+        this.setSelectedTile(-1);
+        this.scene.renderPlayerIstaka(player.hand, -1, this.canAutoSort());
         this.hideActionPanel();
       }
     } else {
-      // 3. Clicked a DIFFERENT tile -> SWAP POSITIONS ON THE ISTAKA!
       const prevIdx = this.selectedTileIndex;
       const targetIdx = tileIndex;
 
@@ -1528,7 +2509,6 @@ class AppManager {
       player.hand[prevIdx] = player.hand[targetIdx];
       player.hand[targetIdx] = temp;
 
-      // Swap physical rack coordinates so tiles switch places seamlessly
       const tSlot = player.hand[prevIdx]._istakaSlot;
       const tTier = player.hand[prevIdx]._istakaTier;
       player.hand[prevIdx]._istakaSlot = player.hand[targetIdx]._istakaSlot;
@@ -1536,69 +2516,67 @@ class AppManager {
       player.hand[targetIdx]._istakaSlot = tSlot;
       player.hand[targetIdx]._istakaTier = tTier;
 
-      this.selectedTileIndex = -1;
-      this.scene.renderPlayerIstaka(player.hand);
+      this.setSelectedTile(-1);
+      this.scene.renderPlayerIstaka(player.hand, -1, this.canAutoSort());
       soundFx.playOkeyTileSlide();
       soundFx.playOkeyStoneClack(0.7);
       this.updateAIAdvisor();
-      this.appendLog(`Istakada taşların yeri değiştirildi.`);
       this.hideActionPanel();
     }
   }
 
   showTileSelectionActions(tile) {
+    const mySeat = this.getMySeat();
     this.dom.actionTitle.textContent = `Seçilen Taş: ${tile.colorName} ${tile.number || 'Sahte Okey'}`;
     this.dom.actionButtonsContainer.innerHTML = '';
 
-    if (this.gameEngine.turnPhase === 'DISCARD' && this.gameEngine.currentTurn === 0) {
+    if (this.gameEngine.turnPhase === 'DISCARD' && this.gameEngine.currentTurn === mySeat) {
       const discardBtn = document.createElement('button');
       discardBtn.className = 'action-chip pass';
       discardBtn.textContent = '🚀 Bu Taşı At';
-      discardBtn.onclick = () => {
-        this.selectedTileIndex = -1;
-        this.gameEngine.discardTile(0, tile.id);
-        this.hideActionPanel();
-      };
+      discardBtn.onclick = () => this.dispatchOkeyDiscard(tile.id);
       this.dom.actionButtonsContainer.appendChild(discardBtn);
     }
 
-    const sortAiBtn = document.createElement('button');
-    sortAiBtn.className = 'action-chip ai-btn';
-    sortAiBtn.textContent = '🧠 AI Akıllı Diz';
-    sortAiBtn.onclick = () => {
-      this.selectedTileIndex = -1;
-      this.sortHandAI();
-      this.hideActionPanel();
-    };
-    this.dom.actionButtonsContainer.appendChild(sortAiBtn);
+    if (this.hasAIAccess()) {
+      const sortAiBtn = document.createElement('button');
+      sortAiBtn.className = 'action-chip ai-btn';
+      sortAiBtn.textContent = '🧠 AI Akıllı Diz';
+      sortAiBtn.onclick = () => {
+        this.sortHandAI();
+        this.hideActionPanel();
+      };
+      this.dom.actionButtonsContainer.appendChild(sortAiBtn);
+    }
 
-    const sortRunsBtn = document.createElement('button');
-    sortRunsBtn.className = 'action-chip';
-    sortRunsBtn.textContent = '📐 Seri Diz';
-    sortRunsBtn.onclick = () => {
-      this.selectedTileIndex = -1;
-      this.sortHandRuns();
-      this.hideActionPanel();
-    };
-    this.dom.actionButtonsContainer.appendChild(sortRunsBtn);
+    if (this.canAutoSort()) {
+      const sortRunsBtn = document.createElement('button');
+      sortRunsBtn.className = 'action-chip';
+      sortRunsBtn.textContent = '📐 Seri Diz';
+      sortRunsBtn.onclick = () => {
+        this.sortHandRuns();
+        this.hideActionPanel();
+      };
+      this.dom.actionButtonsContainer.appendChild(sortRunsBtn);
 
-    const sortPairsBtn = document.createElement('button');
-    sortPairsBtn.className = 'action-chip';
-    sortPairsBtn.textContent = '👥 Çift Diz';
-    sortPairsBtn.onclick = () => {
-      this.selectedTileIndex = -1;
-      this.sortHandPairs();
-      this.hideActionPanel();
-    };
-    this.dom.actionButtonsContainer.appendChild(sortPairsBtn);
+      const sortPairsBtn = document.createElement('button');
+      sortPairsBtn.className = 'action-chip';
+      sortPairsBtn.textContent = '👥 Çift Diz';
+      sortPairsBtn.onclick = () => {
+        this.sortHandPairs();
+        this.hideActionPanel();
+      };
+      this.dom.actionButtonsContainer.appendChild(sortPairsBtn);
+    }
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'action-chip';
     cancelBtn.style.background = '#475569';
     cancelBtn.textContent = 'Vazgeç';
     cancelBtn.onclick = () => {
-      this.selectedTileIndex = -1;
-      this.scene.renderPlayerIstaka(this.gameEngine.players[0].hand);
+      this.setSelectedTile(-1);
+      const player = this.getMyPlayer();
+      if (player) this.scene.renderPlayerIstaka(player.hand, -1, this.canAutoSort());
       this.hideActionPanel();
     };
     this.dom.actionButtonsContainer.appendChild(cancelBtn);
@@ -1608,41 +2586,43 @@ class AppManager {
 
   handleCenterStackClick() {
     if ((this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101') && this.gameEngine) {
-      if (this.gameEngine.currentTurn === 0 && this.gameEngine.turnPhase === 'DRAW') {
-        this.gameEngine.drawFromStack(0);
-        this.hideActionPanel();
+      if (this.gameEngine.currentTurn === this.getMySeat() && this.gameEngine.turnPhase === 'DRAW') {
+        this.dispatchOkeyDrawStack();
       }
     }
   }
 
   updateOkeyHUD(customStatus = null) {
     const p = this.gameEngine.players;
-    const scores = p.map(player => ({
+    const mySeat = this.getMySeat();
+    const scores = p.map((player) => ({
       name: player.name,
-      score: player.score
+      score: player.score,
     }));
 
-    const status = customStatus || (this.gameEngine.currentTurn === 0 ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
+    const status =
+      customStatus || (this.gameEngine.currentTurn === mySeat ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
     this.dom.hudStatus.textContent = status;
 
-    const advice = this.currentAdvice;
+    const advice = this.hasAIAccess() && this.aiEnabled ? this.currentAdvice : null;
     this.scene.updateHUD({
       title: 'KLASİK OKEY (Kıraathane)',
       status,
       trump: null,
       okeyTile: this.gameEngine.okeyTileInfo,
-      currentTurn: this.gameEngine.currentTurn,
+      currentTurn: this.toVisualSeat(this.gameEngine.currentTurn, 4),
       scores,
       aiAdvice: advice?.bestDiscard ? `Tavsiye: ${advice.bestDiscard.tile.colorName} ${advice.bestDiscard.tile.number} Atın` : null,
-      aiDetail: advice?.bestDiscard?.reason || null
+      aiDetail: advice?.bestDiscard?.reason || null,
     });
+    this.renderScoreboard();
   }
 
-  // --- BATAK INTEGRATION ---
+  // --- BATAK ---
   startBatakGame() {
     this.resetActiveEngine();
     this.currentGameType = 'BATAK';
-    this.dom.hudGameName.textContent = 'İhaleli Batak';
+    this.dom.hudGameName.textContent = 'İhaleli Batak (1/10)';
     this.dom.trumpContainer.style.display = 'flex';
     this.dom.trumpInfoLabel.textContent = 'Koz';
     this.updateGameControls('BATAK');
@@ -1651,36 +2631,51 @@ class AppManager {
     soundFx.playCardShuffle();
 
     const seatedPlayers = this.getActiveSeatedPlayers(4);
-    this.scene.updateTableAvatars(seatedPlayers);
+    this.scene.updateTableAvatars(this.toVisualArray(seatedPlayers));
 
-    this.gameEngine = new BatakGameEngine('IHALELI', 5);
-    this.gameEngine.initPlayers(seatedPlayers.map(p => p.name));
-
-    this.gameEngine.onEvent((event, data) => {
-      this.handleBatakEvent(event, data);
-    });
-
+    this.gameEngine = new BatakGameEngine('IHALELI', 10);
+    this.gameEngine.initPlayers(seatedPlayers);
+    this.gameEngine.onEvent((event, data) => this.handleBatakEvent(event, data));
     this.gameEngine.startNewMatch();
+
+    if (this.dom.scoreboardPanel) {
+      if (typeof window !== 'undefined' && window.innerWidth > 960) {
+        this.dom.scoreboardPanel.classList.remove('hidden');
+      } else {
+        this.dom.scoreboardPanel.classList.add('hidden');
+      }
+      this.renderScoreboard();
+    }
   }
 
   handleBatakEvent(event, data) {
+    const mySeat = this.getMySeat();
+
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'deal_complete') {
       this.updateBatakHUD('Kartlar Dağıtıldı');
-      this.sortBatakCards();
-      this.scene.renderOpponentHands(this.gameEngine.players);
+      if (this.canAutoSort()) {
+        this.sortBatakCards();
+      } else {
+        const myPlayer = this.getMyPlayer();
+        const isMyTurn = this.gameEngine.currentTurn === mySeat && this.gameEngine.gameState === 'PLAYING';
+        const playableCards = isMyTurn ? this.gameEngine.getLegalCards(mySeat).map((c) => c.id) : null;
+        this.scene.renderPlayerHand(myPlayer?.hand || [], playableCards, null);
+      }
+      this.scene.renderOpponentHands(this.toVisualArray(this.gameEngine.players));
       soundFx.playCardDeal();
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'deal_complete' });
     } else if (event === 'bidding_started' || event === 'bid_turn_changed') {
-      const isMyTurn = data.bidTurn === 0;
-      const bidderName = this.gameEngine.players[data.bidTurn].name;
+      const isMyTurn = data.bidTurn === mySeat;
+      const bidderName = this.gameEngine.players[data.bidTurn]?.name || '';
       this.updateBatakHUD(`İhale Sırası: ${bidderName}`);
 
       if (isMyTurn) {
         this.showBatakBiddingUI(data.highestBid);
         this.scene.showBiddingButtonsInVR(data.highestBid, (bid) => {
-          this.gameEngine.submitBid(0, bid);
+          this.dispatchBatakBid(bid);
           this.hideActionPanel();
         });
       } else {
@@ -1688,53 +2683,68 @@ class AppManager {
         this.scene.clearVRButtons();
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: event, bidTurn: data.bidTurn });
     } else if (event === 'choose_trump_phase') {
-      if (data.playerIndex === 0) {
+      if (data.playerIndex === mySeat) {
         this.updateBatakHUD('İhaleyi Aldınız! Lütfen Koz Seçin.');
         this.showTrumpSelectionUI();
         this.scene.showTrumpSelectionButtonsInVR((suit) => {
-          this.gameEngine.setTrump(0, suit);
+          this.dispatchBatakTrump(suit);
           this.hideActionPanel();
         });
       } else {
-        this.updateBatakHUD(`${this.gameEngine.players[data.playerIndex].name} Koz Seçiyor...`);
+        this.updateBatakHUD(`${this.gameEngine.players[data.playerIndex]?.name} Koz Seçiyor...`);
       }
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'choose_trump_phase', playerIndex: data.playerIndex });
     } else if (event === 'trump_chosen') {
       const suit = SUITS[data.trumpSuit];
       this.dom.hudTrump.innerHTML = `<span style="color:${suit.isRed ? '#ef4444' : '#60a5fa'}">${suit.symbol} ${suit.name}</span>`;
       soundFx.playTrumpFanfare();
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'trump_chosen', trumpSuit: data.trumpSuit });
     } else if (event === 'playing_started' || event === 'turn_changed') {
-      const isMyTurn = data.currentTurn === 0;
+      const isMyTurn = data.currentTurn === mySeat;
       const turnPlayer = this.gameEngine.players[data.currentTurn];
-      this.updateBatakHUD(isMyTurn ? '🌟 SIRA SİZDE! Kart seçin.' : `${turnPlayer.name} oynuyor...`);
+      this.updateBatakHUD(isMyTurn ? '🌟 SIRA SİZDE! Kart seçin veya yukarı sürükleyin.' : `${turnPlayer?.name} oynuyor...`);
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: event, currentTurn: data.currentTurn });
     } else if (event === 'card_played') {
-      this.scene.animateCardPlay(data.card, data.playerIndex, null, () => {
-        this.scene.renderTableCards(this.gameEngine.currentTrick);
+      const vSeat = this.toVisualSeat(data.playerIndex, 4);
+      this.scene.animateCardPlay(data.card, vSeat, null, () => {
+        const visualTrick = (this.gameEngine.currentTrick || []).map((tc) => ({
+          ...tc,
+          playerIndex: this.toVisualSeat(tc.playerIndex, 4),
+        }));
+        this.scene.renderTableCards(visualTrick);
       });
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'card_played', playerIndex: data.playerIndex, card: data.card });
     } else if (event === 'trick_completed') {
       const winner = this.gameEngine.players[data.winnerIndex];
-      this.updateBatakHUD(`Eli ${winner.name} aldı!`);
+      const vWinner = this.toVisualSeat(data.winnerIndex, 4);
+      this.updateBatakHUD(`Eli ${winner?.name} aldı!`);
       setTimeout(() => {
-        this.scene.animateTrickCollection(data.winnerIndex, () => {
+        this.scene.animateTrickCollection(vWinner, () => {
           this.updateBatakHUD();
           this.updateAIAdvisor();
         });
-      }, 700);
+      }, 650);
+      this.syncHostStateToGuests({ type: 'trick_completed', winnerIndex: data.winnerIndex });
     } else if (event === 'round_ended') {
-      this.updateBatakHUD('El Tamamlandı!');
+      this.updateBatakHUD(`${data.round}. Tur Tamamlandı! (${data.round}/${data.totalRounds})`);
+      this.showBatakRoundEndUI();
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'round_ended', round: data.round });
     } else if (event === 'match_winner') {
       this.updateBatakHUD(`🏆 OYUN BİTTİ! Kazanan: ${data.winner.name}`);
       this.triggerVictoryCelebration();
       this.showGameOverModal({
         winnerName: data.winner.name,
-        details: `Batak İhale Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (Puan: ${data.winner.score ?? 0})`,
-        gameType: 'BATAK'
+        details: `Batak İhale Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (Puan: ${data.winner.totalScore ?? 0})`,
+        gameType: 'BATAK',
       });
+      this.syncHostStateToGuests({ type: 'match_winner', winner: data.winner });
     }
   }
 
@@ -1746,7 +2756,7 @@ class AppManager {
     passBtn.className = 'action-chip pass';
     passBtn.textContent = 'Pas';
     passBtn.onclick = () => {
-      this.gameEngine.submitBid(0, 0);
+      this.dispatchBatakBid(0);
       this.hideActionPanel();
     };
     this.dom.actionButtonsContainer.appendChild(passBtn);
@@ -1757,66 +2767,231 @@ class AppManager {
       bidBtn.className = 'action-chip';
       bidBtn.textContent = `${b} Batak`;
       bidBtn.onclick = () => {
-        this.gameEngine.submitBid(0, b);
+        this.dispatchBatakBid(b);
         this.hideActionPanel();
       };
       this.dom.actionButtonsContainer.appendChild(bidBtn);
     }
-
     this.dom.actionPanel.classList.add('show');
   }
 
   showTrumpSelectionUI() {
     this.dom.actionTitle.textContent = 'Koz Rengini Seçin:';
     this.dom.actionButtonsContainer.innerHTML = '';
-
     const suits = [
       { key: 'S', name: 'Maça ♠', color: '#60a5fa' },
       { key: 'H', name: 'Kupa ♥', color: '#ef4444' },
       { key: 'D', name: 'Karo ♦', color: '#ef4444' },
-      { key: 'C', name: 'Sinek ♣', color: '#60a5fa' }
+      { key: 'C', name: 'Sinek ♣', color: '#60a5fa' },
     ];
-
-    suits.forEach(s => {
+    suits.forEach((s) => {
       const btn = document.createElement('button');
       btn.className = 'action-chip';
       btn.style.borderColor = s.color;
       btn.innerHTML = `<span style="color:${s.color}; font-size:1.2rem;">${s.name}</span>`;
       btn.onclick = () => {
-        this.gameEngine.setTrump(0, s.key);
+        this.dispatchBatakTrump(s.key);
         this.hideActionPanel();
       };
       this.dom.actionButtonsContainer.appendChild(btn);
     });
-
     this.dom.actionPanel.classList.add('show');
   }
 
   updateBatakHUD(customStatus = null) {
     const p = this.gameEngine.players;
-    const scores = p.map(player => ({
+    const mySeat = this.getMySeat();
+    const scores = p.map((player) => ({
       name: player.name,
       bid: player.bid,
-      tricks: player.tricksWon,
-      score: player.totalScore
+      tricks: player.tricksTaken,
+      score: player.totalScore,
     }));
 
-    const status = customStatus || (this.gameEngine.currentTurn === 0 ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
+    const status =
+      customStatus || (this.gameEngine.currentTurn === mySeat ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
     this.dom.hudStatus.textContent = status;
+    this.dom.hudGameName.textContent = `İhaleli Batak (${this.gameEngine.currentRound}/${this.gameEngine.totalRounds})`;
 
-    const advice = this.currentAdvice;
+    const advice = this.hasAIAccess() && this.aiEnabled ? this.currentAdvice : null;
     this.scene.updateHUD({
-      title: `İHALELİ BATAK (${this.gameEngine.currentHand}/${this.gameEngine.totalHands}. El)`,
+      title: `İHALELİ BATAK (${this.gameEngine.currentRound}/${this.gameEngine.totalRounds}. Tur)`,
       status,
       trump: this.gameEngine.trumpSuit,
-      currentTurn: this.gameEngine.currentTurn,
+      currentTurn: this.toVisualSeat(this.gameEngine.currentTurn, 4),
       scores,
-      aiAdvice: advice?.recommendedCard ? `Tavsiye: ${advice.recommendedCard.suitName} ${advice.recommendedCard.rank}` : (advice?.summary || null),
-      aiDetail: advice?.reason || null
+      aiAdvice: advice?.recommendedCard
+        ? `Tavsiye: ${advice.recommendedCard.suitName} ${advice.recommendedCard.rank}`
+        : advice?.summary || null,
+      aiDetail: advice?.reason || null,
     });
+    this.renderScoreboard();
   }
 
-  // --- PISTI INTEGRATION ---
+  showBatakRoundEndUI() {
+    if (!this.gameEngine || this.currentGameType !== 'BATAK') return;
+    const round = this.gameEngine.currentRound;
+    const total = this.gameEngine.totalRounds;
+    const canStartNext = !this.isMultiplayerGuest() && round < total;
+
+    this.dom.actionTitle.textContent = `${round}. Tur Tamamlandı (${round}/${total}) — Her Elin Skorları Güncellendi`;
+    this.dom.actionButtonsContainer.innerHTML = '';
+
+    if (canStartNext) {
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'action-chip';
+      nextBtn.style.background = '#059669';
+      nextBtn.textContent = `▶️ ${round + 1}. Tura Başla`;
+      nextBtn.onclick = () => {
+        this.hideActionPanel();
+        this.gameEngine?.startNewRound();
+      };
+      this.dom.actionButtonsContainer.appendChild(nextBtn);
+    }
+
+    const sbBtn = document.createElement('button');
+    sbBtn.className = 'action-chip';
+    sbBtn.textContent = '📋 Skor Tablosu';
+    sbBtn.onclick = () => {
+      this.dom.scoreboardPanel?.classList.remove('hidden');
+      this.renderScoreboard();
+    };
+    this.dom.actionButtonsContainer.appendChild(sbBtn);
+
+    const leaveBtn = document.createElement('button');
+    leaveBtn.className = 'action-chip pass';
+    leaveBtn.textContent = '🚪 Oyundan Ayrıl';
+    leaveBtn.onclick = () => this.leaveCurrentGame();
+    this.dom.actionButtonsContainer.appendChild(leaveBtn);
+
+    this.dom.actionPanel.classList.add('show');
+
+    this.scene.showBatakRoundEndButtonsInVR(
+      round + 1,
+      total,
+      canStartNext,
+      () => {
+        this.hideActionPanel();
+        this.gameEngine?.startNewRound();
+      },
+      () => this.leaveCurrentGame(true)
+    );
+  }
+
+  leaveCurrentGame(skipConfirm = false) {
+    if (
+      !skipConfirm &&
+      this.gameEngine &&
+      this.gameEngine.gameState !== 'GAME_OVER' &&
+      this.gameEngine.gameState !== 'IDLE'
+    ) {
+      const ok = confirm('Oyun henüz tamamlanmadı. 10 tur dolmadan oyundan ayrılmak istediğinize emin misiniz?');
+      if (!ok) return;
+    }
+
+    if (networkManager.isConnected) {
+      networkManager.leaveRoom();
+      spatialVoice.closeAllPeers();
+    }
+
+    this.resetActiveEngine();
+    this.hideGameOverModal();
+    this.dom.scoreboardPanel?.classList.add('hidden');
+    if (this.dom.hudStatus) this.dom.hudStatus.textContent = 'Masadan ayrıldınız';
+    this.appendLog('🚪 Oyundan ayrıldınız.');
+    this.dom.menuModal?.classList.remove('hidden');
+  }
+
+  renderScoreboard() {
+    if (!this.dom.scoreboardPanel || !this.gameEngine) return;
+    const players = this.gameEngine.players || [];
+    if (players.length === 0) return;
+
+    const shortName = (n = '') => {
+      const clean = String(n).replace(/\s*\(Bot\)/i, '').trim();
+      return clean.length > 8 ? clean.slice(0, 7) + '…' : clean;
+    };
+
+    if (this.currentGameType === 'BATAK') {
+      if (this.dom.scoreboardTitleText) this.dom.scoreboardTitleText.textContent = 'BATAK YAZBOZ';
+      if (this.dom.scoreboardRoundBadge) {
+        this.dom.scoreboardRoundBadge.textContent = `Tur ${this.gameEngine.currentRound}/${this.gameEngine.totalRounds}`;
+      }
+
+      if (this.dom.scoreboardLiveBar) {
+        const bidderIdx = this.gameEngine.highestBidderIndex;
+        const headerPill =
+          bidderIdx >= 0
+            ? `<span class="scoreboard-live-pill bidder">İhale: ${shortName(players[bidderIdx]?.name)} (${this.gameEngine.highestBid})</span>`
+            : '<span class="scoreboard-live-pill">İhale bekleniyor</span>';
+        const trickPills = players
+          .map((pl) => `<span class="scoreboard-live-pill">${shortName(pl.name)}: ${pl.tricksTaken || 0} el</span>`)
+          .join('');
+        this.dom.scoreboardLiveBar.innerHTML = `${headerPill}${trickPills}`;
+      }
+
+      if (this.dom.scoreboardThead) {
+        this.dom.scoreboardThead.innerHTML = `<tr><th>Tur</th>${players
+          .map((pl) => `<th>${shortName(pl.name)}</th>`)
+          .join('')}</tr>`;
+      }
+
+      const history = this.gameEngine.roundHistory || [];
+      if (this.dom.scoreboardTbody) {
+        if (history.length === 0) {
+          this.dom.scoreboardTbody.innerHTML = `<tr><td colspan="${players.length + 1}" style="color:#94a3b8; padding:10px;">Henüz tamamlanan el yok (${this.gameEngine.currentRound}. tur sürüyor)</td></tr>`;
+        } else {
+          this.dom.scoreboardTbody.innerHTML = history
+            .map((entry) => {
+              const cells = players
+                .map((pl, idx) => {
+                  const rec = entry.scores?.[idx];
+                  const val = rec ? rec.roundScore : 0;
+                  const star = entry.bidderIndex === idx ? '★' : '';
+                  const cls = val > 0 ? 'score-pos' : val < 0 ? 'score-neg' : '';
+                  const txt = val > 0 ? `+${val}` : `${val}`;
+                  return `<td class="${cls}">${star}${txt}</td>`;
+                })
+                .join('');
+              return `<tr><td><strong>${entry.round}</strong></td>${cells}</tr>`;
+            })
+            .join('');
+        }
+      }
+
+      if (this.dom.scoreboardTfoot) {
+        this.dom.scoreboardTfoot.innerHTML = `<tr><td>TOPLAM</td>${players
+          .map((pl) => `<td>${pl.totalScore || 0}</td>`)
+          .join('')}</tr>`;
+      }
+      return;
+    }
+
+    // Pişti / Okey / 101 Okey genel skor görünümü
+    const titles = { PISTI: 'PİŞTİ SKOR', OKEY: 'KLASİK OKEY SKOR', OKEY101: '101 OKEY SKOR' };
+    if (this.dom.scoreboardTitleText) this.dom.scoreboardTitleText.textContent = titles[this.currentGameType] || 'SKOR TABLOSU';
+    if (this.dom.scoreboardRoundBadge) {
+      this.dom.scoreboardRoundBadge.textContent =
+        this.currentGameType === 'OKEY101'
+          ? `El ${this.gameEngine.currentHand || 1}/${this.gameEngine.totalHands || 3}`
+          : 'Canlı';
+    }
+    if (this.dom.scoreboardLiveBar) this.dom.scoreboardLiveBar.innerHTML = '';
+    if (this.dom.scoreboardThead) {
+      this.dom.scoreboardThead.innerHTML = `<tr><th>Oyuncu</th><th>Skor</th></tr>`;
+    }
+    if (this.dom.scoreboardTbody) {
+      this.dom.scoreboardTbody.innerHTML = players
+        .map((pl) => {
+          const val = this.currentGameType === 'OKEY101' ? pl.totalPenalty || 0 : (pl.totalScore ?? pl.score ?? 0);
+          return `<tr><td>${pl.name}</td><td><strong>${val}</strong></td></tr>`;
+        })
+        .join('');
+    }
+    if (this.dom.scoreboardTfoot) this.dom.scoreboardTfoot.innerHTML = '';
+  }
+
+  // --- PİŞTİ ---
   startPistiGame() {
     this.resetActiveEngine();
     this.currentGameType = 'PISTI';
@@ -1827,103 +3002,147 @@ class AppManager {
     this.scene.setGameModeView('PISTI');
     soundFx.playCardShuffle();
 
-    const maxP = (networkManager.isConnected && networkManager.maxPlayers) ? networkManager.maxPlayers : 2;
+    const maxP = networkManager.isConnected && networkManager.maxPlayers ? networkManager.maxPlayers : 2;
     const seatedPlayers = this.getActiveSeatedPlayers(maxP);
-    this.scene.updateTableAvatars(seatedPlayers);
+    this.scene.updateTableAvatars(this.toVisualArray(seatedPlayers));
 
     this.gameEngine = new PistiGameEngine(maxP, 101);
-    this.gameEngine.initPlayers(seatedPlayers.map(p => p.name));
-
-    this.gameEngine.onEvent((event, data) => {
-      this.handlePistiEvent(event, data);
-    });
-
+    this.gameEngine.initPlayers(seatedPlayers);
+    this.gameEngine.onEvent((event, data) => this.handlePistiEvent(event, data));
     this.gameEngine.startNewMatch();
   }
 
   handlePistiEvent(event, data) {
+    const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+    const total = this.getTotalPlayersCount();
+
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'table_deal') {
       this.scene.renderTableCards(data.tableCards);
       soundFx.playCardDeal();
+      this.syncHostStateToGuests({ type: 'table_deal' });
     } else if (event === 'deal_complete') {
       this.updatePistiHUD('Kartlar Dağıtıldı');
-      this.scene.renderPlayerHand(this.gameEngine.players[0].hand);
-      this.scene.renderOpponentHands(this.gameEngine.players);
+      this.scene.renderPlayerHand(myPlayer?.hand || []);
+      this.scene.renderOpponentHands(this.toVisualArray(this.gameEngine.players));
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'deal_complete' });
     } else if (event === 'turn_changed') {
-      const isMyTurn = data.currentTurn === 0;
-      this.updatePistiHUD(isMyTurn ? '🌟 SIRA SİZDE! Kart atın.' : 'Bot düşünüyor...');
+      const isMyTurn = data.currentTurn === mySeat;
+      this.updatePistiHUD(
+        isMyTurn ? '🌟 SIRA SİZDE! Kart atın.' : `${this.gameEngine.players[data.currentTurn]?.name || 'Rakip'} oynuyor...`
+      );
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'turn_changed', currentTurn: data.currentTurn });
     } else if (event === 'card_played') {
-      this.scene.animateCardPlay(data.card, data.playerIndex, null, () => {
-        this.scene.renderTableCards(this.gameEngine.tableCards);
+      const vSeat = this.toVisualSeat(data.playerIndex, total);
+      this.scene.animateCardPlay(data.card, vSeat, null, () => {
+        const visualTable = (this.gameEngine.tableCards || []).map((tc) => ({
+          ...tc,
+          playerIndex: tc.playerIndex !== undefined ? this.toVisualSeat(tc.playerIndex, total) : undefined,
+        }));
+        this.scene.renderTableCards(visualTable);
       });
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'card_played', playerIndex: data.playerIndex, card: data.card });
     } else if (event === 'pisti_event') {
       soundFx.playPistiChime();
       this.triggerVictoryCelebration(0.5);
       this.updatePistiHUD(`⚡ ${data.isJackPisti ? 'ÇİFT PİŞTİ (+20)' : 'PİŞTİ (+10)'}!`);
+      this.syncHostStateToGuests({ type: 'pisti_event', isJackPisti: data.isJackPisti });
     } else if (event === 'pile_captured') {
+      const vCapturer = this.toVisualSeat(data.playerIndex, total);
       setTimeout(() => {
-        this.scene.animateTrickCollection(data.playerIndex, () => {
+        this.scene.animateTrickCollection(vCapturer, () => {
           this.updatePistiHUD();
           this.updateAIAdvisor();
         });
       }, 600);
+      this.syncHostStateToGuests({ type: 'pile_captured', playerIndex: data.playerIndex });
     } else if (event === 'round_ended') {
       this.updatePistiHUD('El Bitti! Skorlar güncellendi.');
       this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'round_ended' });
     } else if (event === 'match_winner') {
       this.updatePistiHUD(`🏆 ŞAMPİYON: ${data.winner.name} (${data.winner.totalScore} Puan)`);
       this.triggerVictoryCelebration(1.0);
       this.showGameOverModal({
         winnerName: data.winner.name,
         details: `Pişti Karşılaşması Tamamlandı! Şampiyon: ${data.winner.name} (${data.winner.totalScore} Puan)`,
-        gameType: 'PISTI'
+        gameType: 'PISTI',
       });
+      this.syncHostStateToGuests({ type: 'match_winner', winner: data.winner });
     }
   }
 
   updatePistiHUD(customStatus = null) {
     const p = this.gameEngine.players;
-    const scores = p.map(player => ({
+    const mySeat = this.getMySeat();
+    const total = this.getTotalPlayersCount();
+    const scores = p.map((player) => ({
       name: player.name,
       pistis: player.pistis,
       tricks: player.captured.length,
-      score: player.totalScore
+      score: player.totalScore,
     }));
 
-    const status = customStatus || (this.gameEngine.currentTurn === 0 ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
+    const status =
+      customStatus || (this.gameEngine.currentTurn === mySeat ? 'Sıra Sizde!' : `${p[this.gameEngine.currentTurn]?.name} Oynuyor`);
     this.dom.hudStatus.textContent = status;
 
-    const advice = this.currentAdvice;
+    const advice = this.hasAIAccess() && this.aiEnabled ? this.currentAdvice : null;
     this.scene.updateHUD({
-      title: `PİŞTİ (Hedef 101 Puan)`,
+      title: 'PİŞTİ (Hedef 101 Puan)',
       status,
       trump: null,
-      currentTurn: this.gameEngine.currentTurn,
+      currentTurn: this.toVisualSeat(this.gameEngine.currentTurn, total),
       scores,
-      aiAdvice: advice?.recommendedCard ? `Tavsiye: ${advice.recommendedCard.suitName} ${advice.recommendedCard.rank}` : (advice?.summary || null),
-      aiDetail: advice?.reason || null
+      aiAdvice: advice?.recommendedCard ? `Tavsiye: ${advice.recommendedCard.suitName} ${advice.recommendedCard.rank}` : advice?.summary || null,
+      aiDetail: advice?.reason || null,
     });
+    this.renderScoreboard();
+  }
+
+  handleUserCardReorder(card, targetIndex) {
+    const player = this.getMyPlayer();
+    if (!player || !player.hand || !card) return;
+    const curIdx = player.hand.findIndex((c) => c.id === card.id);
+    if (curIdx === -1 || targetIndex < 0 || targetIndex >= player.hand.length) {
+      this.refreshCurrentGameViews();
+      return;
+    }
+    if (curIdx !== targetIndex) {
+      const [moved] = player.hand.splice(curIdx, 1);
+      player.hand.splice(targetIndex, 0, moved);
+      soundFx.playCardDeal(0, 0);
+    }
+    if (this.currentGameType === 'BATAK') {
+      const mySeat = this.getMySeat();
+      const isMyTurn = this.gameEngine.currentTurn === mySeat && this.gameEngine.gameState === 'PLAYING';
+      const playableCards = isMyTurn ? this.gameEngine.getLegalCards(mySeat).map((c) => c.id) : null;
+      this.scene.renderPlayerHand(player.hand, playableCards, this.currentAdvice?.recommendedCard?.id || null);
+    } else {
+      this.scene.renderPlayerHand(player.hand, null, this.currentAdvice?.recommendedCard?.id || null);
+    }
+    this.renderMobileHandDock();
   }
 
   handleUserCardSelected(card) {
+    const mySeat = this.getMySeat();
     if (!this.gameEngine || this.gameEngine.gameState !== 'PLAYING') return;
-    if (this.gameEngine.currentTurn !== 0) return;
+    if (this.gameEngine.currentTurn !== mySeat) return;
 
     if (this.currentGameType === 'BATAK') {
-      const isPlayable = this.gameEngine.isCardPlayable(0, card.id);
-      if (!isPlayable) {
+      if (!this.gameEngine.isCardPlayable(mySeat, card.id)) {
         soundFx.playButtonClick();
         this.appendLog('⚠️ Kural ihlali: Bu kartı oynayamazsınız!');
         return;
       }
-      this.gameEngine.playCard(0, card.id);
+      this.dispatchPlayCard(card.id);
     } else if (this.currentGameType === 'PISTI') {
-      this.gameEngine.playCard(0, card.id);
+      this.dispatchPlayCard(card.id);
     }
   }
 
@@ -1932,7 +3151,6 @@ class AppManager {
     entry.className = 'log-entry';
     entry.textContent = msg;
     this.dom.gameLogBox.prepend(entry);
-
     while (this.dom.gameLogBox.children.length > 20) {
       this.dom.gameLogBox.removeChild(this.dom.gameLogBox.lastChild);
     }
@@ -1943,33 +3161,24 @@ class AppManager {
   }
 
   triggerVictoryCelebration(intensity = 1.0) {
-    const count = Math.floor(100 * intensity);
-    confetti({
-      particleCount: count,
-      spread: 80,
-      origin: { y: 0.6 }
-    });
+    confetti({ particleCount: Math.floor(100 * intensity), spread: 80, origin: { y: 0.6 } });
   }
 
-  showGameOverModal({ winnerName, details, gameType }) {
-    if (this.dom.gameOverWinner) {
-      this.dom.gameOverWinner.textContent = `👑 Kazanan: ${winnerName || 'Oyuncu'}`;
-    }
-    if (this.dom.gameOverSummary) {
-      this.dom.gameOverSummary.textContent = details || 'Tebrikler! Karşılaşma tamamlandı.';
-    }
-    if (this.dom.gameOverModal) {
-      this.dom.gameOverModal.classList.remove('hidden');
-    }
+  showGameOverModal({ winnerName, details }) {
+    if (this.dom.gameOverWinner) this.dom.gameOverWinner.textContent = `👑 Kazanan: ${winnerName || 'Oyuncu'}`;
+    if (this.dom.gameOverSummary) this.dom.gameOverSummary.textContent = details || 'Karşılaşma tamamlandı.';
+    if (this.dom.gameOverModal) this.dom.gameOverModal.classList.remove('hidden');
 
-    // VR 3D Dialog in WebXR
-    if (this.scene && typeof this.scene.showVRGameOverDialog === 'function') {
+    if (this.scene?.showVRGameOverDialog) {
       this.scene.showVRGameOverDialog({
         winnerName: winnerName || 'Oyuncu',
-        scoreText: details || 'Tebrikler! Karşılaşma tamamlandı.',
+        scoreText: details || 'Karşılaşma tamamlandı.',
         onPlayAgain: () => {
           this.hideGameOverModal();
-          this.startActiveGameMode();
+          if (!this.isMultiplayerGuest()) {
+            if (this.isMultiplayerHost()) networkManager.startGame(this.currentGameType, networkManager.maxPlayers);
+            this.startActiveGameMode();
+          }
         },
         onExitVR: () => {
           this.hideGameOverModal();
@@ -1978,149 +3187,197 @@ class AppManager {
         onMenu: () => {
           this.hideGameOverModal();
           this.dom.menuModal.classList.remove('hidden');
-        }
+        },
       });
     }
   }
 
   hideGameOverModal() {
-    if (this.dom.gameOverModal) {
-      this.dom.gameOverModal.classList.add('hidden');
-    }
-    if (this.scene && typeof this.scene.hideVRGameOverDialog === 'function') {
-      this.scene.hideVRGameOverDialog();
-    }
+    this.dom.gameOverModal?.classList.add('hidden');
+    this.scene?.hideVRGameOverDialog?.();
   }
 
-  // --- VIP DEVELOPER AUTHENTICATION (MÜCAHİT KORKMAZ) ---
+  // --- ADMIN & MEMBER FEATURE PERMISSIONS ---
+  isAdminUser() {
+    return Boolean(this.currentUser?.email?.trim().toLowerCase() === ADMIN_EMAIL);
+  }
+
+  hasAIAccess() {
+    return Boolean(this.currentUser && (this.isAdminUser() || this.currentUser.aiAccess === true));
+  }
+
   isVIPUser() {
-    return Boolean(
-      this.currentUser &&
-      this.currentUser.email &&
-      this.currentUser.email.trim().toLowerCase() === 'mchtkrkmz@gmail.com'
-    );
+    return this.hasAIAccess();
+  }
+
+  canAutoSort() {
+    return Boolean(this.currentUser);
   }
 
   updateVIPState() {
-    const isVIP = this.isVIPUser();
-    const isUserLoggedIn = Boolean(this.currentUser);
+    const isAdmin = this.isAdminUser();
+    const hasAI = this.hasAIAccess();
+    const canSort = this.canAutoSort();
 
     if (this.dom.btnProfile) {
-      if (isVIP) {
+      if (isAdmin) {
         if (this.dom.profileIcon) this.dom.profileIcon.textContent = '👑';
-        if (this.dom.profileLabel) this.dom.profileLabel.textContent = 'Mücahit (VIP)';
+        if (this.dom.profileLabel) this.dom.profileLabel.textContent = 'Admin';
         this.dom.btnProfile.style.borderColor = 'var(--border-gold)';
         this.dom.btnProfile.style.color = 'var(--accent-gold)';
-      } else if (isUserLoggedIn) {
+      } else if (hasAI) {
+        if (this.dom.profileIcon) this.dom.profileIcon.textContent = '🤖';
+        if (this.dom.profileLabel) this.dom.profileLabel.textContent = this.currentUser.name || 'Oyuncu';
+        this.dom.btnProfile.style.borderColor = '#10b981';
+        this.dom.btnProfile.style.color = '#34d399';
+      } else if (canSort) {
         if (this.dom.profileIcon) this.dom.profileIcon.textContent = '👤';
         if (this.dom.profileLabel) this.dom.profileLabel.textContent = this.currentUser.name || 'Oyuncu';
-        this.dom.btnProfile.style.borderColor = 'rgba(148, 163, 184, 0.35)';
-        this.dom.btnProfile.style.color = 'var(--text-main)';
+        this.dom.btnProfile.style.borderColor = '';
+        this.dom.btnProfile.style.color = '';
       } else {
         if (this.dom.profileIcon) this.dom.profileIcon.textContent = '👤';
         if (this.dom.profileLabel) this.dom.profileLabel.textContent = 'Giriş Yap';
-        this.dom.btnProfile.style.borderColor = 'rgba(148, 163, 184, 0.25)';
-        this.dom.btnProfile.style.color = 'var(--text-main)';
+        this.dom.btnProfile.style.borderColor = '';
+        this.dom.btnProfile.style.color = '';
       }
     }
 
-    // Secret AI Features: Strictly locked to mchtkrkmz@gmail.com
-    if (this.dom.btnToggleAI) {
-      this.dom.btnToggleAI.style.display = isVIP ? 'inline-flex' : 'none';
-    }
-    if (this.dom.aiCoachPanel) {
-      this.dom.aiCoachPanel.style.display = (isVIP && this.aiEnabled) ? 'block' : 'none';
-    }
-    if (this.dom.btnAISort) {
-      const isOkeyType = this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101';
-      this.dom.btnAISort.style.display = (isVIP && isOkeyType) ? 'inline-flex' : 'none';
-    }
-
-    if (!isVIP) {
+    if (!hasAI) {
       this.aiEnabled = false;
       this.currentAdvice = null;
     }
 
+    if (this.dom.btnToggleAI) {
+      this.dom.btnToggleAI.style.display = hasAI ? 'inline-flex' : 'none';
+      this.dom.btnToggleAI.classList.toggle('active', hasAI && this.aiEnabled);
+    }
+    if (this.dom.aiCoachPanel) {
+      this.dom.aiCoachPanel.style.display = hasAI && this.aiEnabled ? 'block' : 'none';
+    }
+    if (this.dom.btnAISort) {
+      const isOkeyType = this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101';
+      this.dom.btnAISort.style.display = hasAI && isOkeyType ? 'inline-flex' : 'none';
+    }
+
+    this.scene?.setFeaturePermissions({ canAutoSort: canSort, canUseAI: hasAI });
     this.updateGameControls(this.currentGameType);
   }
 
   updateGameControls(gameType) {
     const isOkeyType = gameType === 'OKEY' || gameType === 'OKEY101';
-    const isBatak = gameType === 'BATAK';
-    const isVIP = this.isVIPUser();
+    const isCardGame = gameType === 'BATAK' || gameType === 'PISTI';
+    const hasAI = this.hasAIAccess();
+    const canSort = this.canAutoSort();
 
-    if (this.dom.okeyRackControls) {
-      this.dom.okeyRackControls.style.display = isOkeyType ? 'inline-flex' : 'none';
-    }
-
-    if (this.dom.btnAISort) {
-      this.dom.btnAISort.style.display = (isOkeyType && isVIP) ? 'inline-flex' : 'none';
-    }
-
-    if (this.dom.batakControls) {
-      this.dom.batakControls.style.display = isBatak ? 'inline-flex' : 'none';
-    }
+    if (this.dom.okeyRackControls) this.dom.okeyRackControls.style.display = isOkeyType && canSort ? 'inline-flex' : 'none';
+    if (this.dom.btnAISort) this.dom.btnAISort.style.display = isOkeyType && hasAI ? 'inline-flex' : 'none';
+    if (this.dom.btnPhotoDemo) this.dom.btnPhotoDemo.style.display = isOkeyType && hasAI ? 'inline-flex' : 'none';
+    if (this.dom.batakControls) this.dom.batakControls.style.display = isCardGame && canSort ? 'inline-flex' : 'none';
+    this.syncMobileHandMode();
   }
 
   sortBatakCards() {
-    if (!this.gameEngine || this.currentGameType !== 'BATAK') return;
-    const player = this.gameEngine.players[0];
-    if (!player || !player.hand) return;
+    if (!this.canAutoSort()) return;
+    const player = this.getMyPlayer();
+    if (!this.gameEngine || !player?.hand) return;
 
-    const suitOrder = { 'S': 0, 'H': 1, 'C': 2, 'D': 3 };
-    const rankOrder = { 'A': 14, 'K': 13, 'Q': 12, 'J': 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
+    const suitOrder = { S: 0, H: 1, C: 2, D: 3 };
+    const rankOrder = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
 
     player.hand.sort((a, b) => {
       const sA = suitOrder[a.suit] ?? 0;
       const sB = suitOrder[b.suit] ?? 0;
       if (sA !== sB) return sA - sB;
-      const rA = rankOrder[a.rank] ?? 0;
-      const rB = rankOrder[b.rank] ?? 0;
-      return rB - rA;
+      return (rankOrder[b.rank] ?? 0) - (rankOrder[a.rank] ?? 0);
     });
 
     soundFx.playCardShuffle();
-    const isMyTurn = this.gameEngine.currentTurn === 0;
-    const playableCards = (isMyTurn && this.gameEngine.gameState === 'PLAYING')
-      ? this.gameEngine.getLegalCards(0).map(c => c.id)
-      : null;
-    const recCardId = this.currentAdvice?.recommendedCard ? this.currentAdvice.recommendedCard.id : null;
-    this.scene.renderPlayerHand(player.hand, playableCards, recCardId);
+    const mySeat = this.getMySeat();
+    const isMyTurn = this.gameEngine.currentTurn === mySeat && this.gameEngine.gameState === 'PLAYING';
+    const playableCards =
+      this.currentGameType === 'BATAK' && isMyTurn ? this.gameEngine.getLegalCards(mySeat).map((c) => c.id) : null;
+    const recId = this.hasAIAccess() && this.aiEnabled ? this.currentAdvice?.recommendedCard?.id || null : null;
+    this.scene.renderPlayerHand(player.hand, playableCards, recId);
+    this.renderMobileHandDock();
     this.appendLog('♠️ Kartlar renklere ve büyüklüklerine göre sıralandı.');
   }
 
   openAuthModal(customNotice = null) {
     this.dom.authModal.classList.remove('hidden');
-
     if (this.currentUser) {
-      // User is logged in: Show Profile Card ONLY
       this.dom.authLoggedInView.classList.remove('hidden');
       this.dom.authFormsContainer.classList.add('hidden');
-
-      const isVIP = this.isVIPUser();
+      const isAdmin = this.isAdminUser();
+      const hasAI = this.hasAIAccess();
       if (this.dom.authUserName) this.dom.authUserName.textContent = this.currentUser.name || 'Oyuncu';
       if (this.dom.authUserEmailDisplay) this.dom.authUserEmailDisplay.textContent = this.currentUser.email || '';
-      if (this.dom.authAvatarIcon) this.dom.authAvatarIcon.textContent = isVIP ? '👑' : '👤';
-      if (this.dom.authVipBadge) this.dom.authVipBadge.style.display = isVIP ? 'inline-block' : 'none';
-      if (this.dom.authRegularBadge) this.dom.authRegularBadge.classList.toggle('hidden', isVIP);
+      if (this.dom.authAvatarIcon) this.dom.authAvatarIcon.textContent = isAdmin ? '👑' : hasAI ? '🤖' : '👤';
+      if (this.dom.authVipBadge) this.dom.authVipBadge.style.display = isAdmin ? 'inline-block' : 'none';
+      if (this.dom.authAiGrantedBadge) this.dom.authAiGrantedBadge.style.display = !isAdmin && hasAI ? 'inline-block' : 'none';
+      if (this.dom.authRegularBadge) this.dom.authRegularBadge.style.display = !isAdmin && !hasAI ? 'inline-block' : 'none';
+      if (this.dom.adminAiPanel) {
+        this.dom.adminAiPanel.classList.toggle('hidden', !isAdmin);
+        if (isAdmin) {
+          this.renderAdminUsersList();
+        }
+      }
     } else {
-      // User is not logged in: Show Register / Login Tabs ONLY
       this.dom.authLoggedInView.classList.add('hidden');
       this.dom.authFormsContainer.classList.remove('hidden');
-
+      this.dom.adminAiPanel?.classList.add('hidden');
       this.dom.tabAuthLogin.classList.add('active');
       this.dom.tabAuthRegister.classList.remove('active');
       this.dom.viewAuthLogin.classList.remove('hidden');
       this.dom.viewAuthRegister.classList.add('hidden');
+      if (customNotice) this.showAuthMsg(customNotice, 'info');
+      else if (this.dom.authMsg) this.dom.authMsg.style.display = 'none';
+    }
+  }
 
-      if (this.dom.inputLoginEmail) this.dom.inputLoginEmail.value = '';
-      if (this.dom.inputLoginPassword) this.dom.inputLoginPassword.value = '';
-      
-      if (customNotice) {
-        this.showAuthMsg(customNotice, 'info');
-      } else if (this.dom.authMsg) {
-        this.dom.authMsg.style.display = 'none';
+  async renderAdminUsersList() {
+    if (!this.isAdminUser() || !this.dom.adminUsersList) return;
+    this.dom.adminUsersList.innerHTML = '<div style="color:#94a3b8; font-size:0.8rem;">Üyeler yükleniyor...</div>';
+    try {
+      const users = await userDb.listAllUsersForAdmin();
+      const members = (users || []).filter((u) => u.email?.toLowerCase() !== ADMIN_EMAIL);
+      if (members.length === 0) {
+        this.dom.adminUsersList.innerHTML =
+          '<div style="color:#94a3b8; font-size:0.8rem; padding:6px;">Henüz yönetici dışında kayıtlı üye yok.</div>';
+        return;
       }
+
+      this.dom.adminUsersList.innerHTML = '';
+      members.forEach((u) => {
+        const row = document.createElement('div');
+        row.className = 'admin-user-row';
+
+        const meta = document.createElement('div');
+        meta.className = 'admin-user-meta';
+        meta.innerHTML = `<span class="admin-user-name">${u.name || 'Üye'}</span><span class="admin-user-email">${u.email}</span>`;
+
+        const btn = document.createElement('button');
+        const active = Boolean(u.aiAccess);
+        btn.className = `admin-toggle-btn ${active ? 'active' : ''}`;
+        btn.textContent = active ? '🔒 Yetkiyi Kaldır' : '🤖 AI Yetkisi Ver';
+        btn.onclick = async () => {
+          btn.disabled = true;
+          try {
+            await userDb.setUserAiAccess(u.email, !active);
+            soundFx.playButtonClick();
+            this.renderAdminUsersList();
+          } catch (err) {
+            this.showAuthMsg(err.message || 'Yetki güncellenemedi.', 'error');
+            btn.disabled = false;
+          }
+        };
+
+        row.appendChild(meta);
+        row.appendChild(btn);
+        this.dom.adminUsersList.appendChild(row);
+      });
+    } catch (err) {
+      this.dom.adminUsersList.innerHTML = `<div style="color:#f87171; font-size:0.8rem;">${err.message || 'Liste alınamadı.'}</div>`;
     }
   }
 
@@ -2141,31 +3398,6 @@ class AppManager {
       this.dom.authMsg.style.border = '1px solid rgba(56, 189, 248, 0.5)';
       this.dom.authMsg.style.color = '#38bdf8';
     }
-  }
-
-  sortHandRuns() {
-    if (!this.gameEngine || !this.gameEngine.players || !this.gameEngine.players[0]) return;
-    const hand = this.gameEngine.players[0].hand;
-    const colorOrder = { RED: 1, BLUE: 2, BLACK: 3, YELLOW: 4 };
-    hand.sort((a, b) => {
-      const ca = colorOrder[a.colorKey] || 99;
-      const cb = colorOrder[b.colorKey] || 99;
-      if (ca !== cb) return ca - cb;
-      return a.number - b.number;
-    });
-    this.scene.renderPlayerIstaka(hand);
-    soundFx.playOkeyTileClick();
-  }
-
-  sortHandPairs() {
-    if (!this.gameEngine || !this.gameEngine.players || !this.gameEngine.players[0]) return;
-    const hand = this.gameEngine.players[0].hand;
-    hand.sort((a, b) => {
-      if (a.number !== b.number) return a.number - b.number;
-      return (a.colorKey || '').localeCompare(b.colorKey || '');
-    });
-    this.scene.renderPlayerIstaka(hand);
-    soundFx.playOkeyTileClick();
   }
 }
 

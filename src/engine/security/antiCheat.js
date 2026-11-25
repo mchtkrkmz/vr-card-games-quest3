@@ -13,9 +13,10 @@ export class AntiCheatEngine {
 
   // Generate cryptographically secure random token
   generateSecureNonce(length = 32) {
-    if (window.crypto && window.crypto.getRandomValues) {
+    const cryptoObj = globalThis.crypto;
+    if (cryptoObj && cryptoObj.getRandomValues) {
       const array = new Uint8Array(length);
-      window.crypto.getRandomValues(array);
+      cryptoObj.getRandomValues(array);
       return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
     }
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -26,9 +27,10 @@ export class AntiCheatEngine {
   secureShuffle(array) {
     const arr = [...array];
     const len = arr.length;
-    if (window.crypto && window.crypto.getRandomValues) {
+    const cryptoObj = globalThis.crypto;
+    if (cryptoObj && cryptoObj.getRandomValues) {
       const randomValues = new Uint32Array(len);
-      window.crypto.getRandomValues(randomValues);
+      cryptoObj.getRandomValues(randomValues);
 
       for (let i = len - 1; i > 0; i--) {
         const j = randomValues[i] % (i + 1);

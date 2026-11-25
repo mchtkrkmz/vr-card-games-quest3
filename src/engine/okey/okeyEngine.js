@@ -39,16 +39,64 @@ export class OkeyGameEngine {
   initPlayers(customNames = []) {
     this.players = [];
     for (let i = 0; i < 4; i++) {
-      const isHuman = i === 0;
-      const defaultName = isHuman ? 'Oyuncu (Siz)' : `Bot ${i}`;
+      const cfg = customNames[i];
+      const isObj = cfg && typeof cfg === 'object';
+      const isBot = isObj ? Boolean(cfg.isBot) : i !== 0;
+      const defaultName = !isBot ? (i === 0 ? 'Oyuncu (Siz)' : `Oyuncu ${i + 1}`) : `Bot ${i}`;
       this.players.push({
         id: i,
-        name: customNames[i] || defaultName,
-        isBot: !isHuman,
+        name: (isObj ? cfg.name : cfg) || defaultName,
+        isBot,
+        avatarId: isObj ? cfg.avatarId || null : null,
+        clientId: isObj ? cfg.clientId || null : null,
         hand: [], // array of tile objects
         score: this.targetScore // In Turkish Okey, players start with 20 points and drop down
       });
     }
+  }
+
+  getSnapshot() {
+    return {
+      gameType: 'OKEY',
+      mode: this.mode,
+      targetScore: this.targetScore,
+      drawStackCount: this.drawStack.length,
+      gostergeTile: this.gostergeTile,
+      okeyTileInfo: this.okeyTileInfo,
+      currentTurn: this.currentTurn,
+      turnPhase: this.turnPhase,
+      discardPiles: this.discardPiles,
+      lastDiscardedTile: this.lastDiscardedTile,
+      lastDiscarderIndex: this.lastDiscarderIndex,
+      gameState: this.gameState,
+      players: this.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        isBot: p.isBot,
+        avatarId: p.avatarId || null,
+        clientId: p.clientId || null,
+        hand: p.hand,
+        score: p.score
+      })),
+      gameLog: this.gameLog.slice(0, 8)
+    };
+  }
+
+  applySnapshot(snap) {
+    if (!snap) return;
+    this.mode = snap.mode ?? this.mode;
+    this.targetScore = snap.targetScore ?? this.targetScore;
+    this.drawStack = new Array(snap.drawStackCount ?? 0).fill(null);
+    this.gostergeTile = snap.gostergeTile || null;
+    this.okeyTileInfo = snap.okeyTileInfo || null;
+    this.currentTurn = snap.currentTurn ?? 0;
+    this.turnPhase = snap.turnPhase ?? 'DRAW';
+    this.discardPiles = snap.discardPiles || [[], [], [], []];
+    this.lastDiscardedTile = snap.lastDiscardedTile || null;
+    this.lastDiscarderIndex = snap.lastDiscarderIndex ?? -1;
+    this.gameState = snap.gameState ?? this.gameState;
+    this.players = (snap.players || []).map(p => ({ ...p, hand: [...(p.hand || [])] }));
+    if (Array.isArray(snap.gameLog)) this.gameLog = [...snap.gameLog];
   }
 
   startNewMatch() {
@@ -103,7 +151,9 @@ export class OkeyGameEngine {
           p.hand.push(this.drawStack.pop());
         }
       }
-      this.sortPlayerHand(p);
+      if (p.isBot) {
+        this.sortPlayerHand(p);
+      }
       antiCheat.generateHandChecksum(p.id, p.hand);
     });
 
@@ -259,7 +309,9 @@ export class OkeyGameEngine {
       if (t.isRealOkey) {
         okeyCount++;
       } else {
-        const key = `${t.colorKey}_${t.number}`;
+        const effColor = t.isFakeOkey ? (t.virtualColorKey || this.okeyTileInfo?.colorKey || t.colorKey) : t.colorKey;
+        const effNum = t.isFakeOkey ? (t.virtualNumber || this.okeyTileInfo?.number || t.number) : t.number;
+        const key = `${effColor}_${effNum}`;
         counts.set(key, (counts.get(key) || 0) + 1);
       }
     });
@@ -273,49 +325,124 @@ export class OkeyGameEngine {
   }
 
   checkValidPers(hand) {
-    // Greedy per evaluator for Okey
-    const tiles = [...hand];
-    let okeys = tiles.filter(t => t.isRealOkey);
-    let regulars = tiles.filter(t => !t.isRealOkey);
+    if (!hand || hand.length !== 14) return false;
 
-    // Group by color for runs
-    const colorGroups = { RED: [], BLACK: [], BLUE: [], YELLOW: [] };
-    regulars.forEach(t => {
-      if (colorGroups[t.colorKey]) colorGroups[t.colorKey].push(t.number);
-    });
+    const COLOR_IDX = { RED: 0, BLACK: 1, BLUE: 2, YELLOW: 3 };
+    const counts = [
+      new Array(14).fill(0),
+      new Array(14).fill(0),
+      new Array(14).fill(0),
+      new Array(14).fill(0)
+    ];
 
-    // Check if total grouped tiles + okeys equal 14
-    let groupedCount = 0;
+    let okeyCount = 0;
+    for (const t of hand) {
+      if (t.isRealOkey) {
+        okeyCount++;
+        continue;
+      }
+      const effColor = t.isFakeOkey ? (t.virtualColorKey || this.okeyTileInfo?.colorKey) : t.colorKey;
+      const effNum = t.isFakeOkey ? (t.virtualNumber || this.okeyTileInfo?.number) : t.number;
+      const cIdx = COLOR_IDX[effColor];
+      if (cIdx === undefined || !effNum || effNum < 1 || effNum > 13) return false;
+      counts[cIdx][effNum]++;
+    }
 
-    // Check color runs
-    for (const color in colorGroups) {
-      const nums = Array.from(new Set(colorGroups[color])).sort((a, b) => a - b);
-      let run = 1;
-      for (let i = 1; i < nums.length; i++) {
-        if (nums[i] === nums[i - 1] + 1) {
-          run++;
-        } else {
-          if (run >= 3) groupedCount += run;
-          run = 1;
+    const solve = (remOkeys) => {
+      // Find first remaining regular tile
+      let firstC = -1;
+      let firstN = -1;
+      outer: for (let c = 0; c < 4; c++) {
+        for (let n = 1; n <= 13; n++) {
+          if (counts[c][n] > 0) {
+            firstC = c;
+            firstN = n;
+            break outer;
+          }
         }
       }
-      if (run >= 3) groupedCount += run;
-    }
 
-    // Check same-number different-color groups
-    const numberGroups = {};
-    regulars.forEach(t => {
-      if (!numberGroups[t.number]) numberGroups[t.number] = new Set();
-      numberGroups[t.number].add(t.colorKey);
-    });
-
-    for (const num in numberGroups) {
-      if (numberGroups[num].size >= 3) {
-        groupedCount += numberGroups[num].size;
+      if (firstC === -1) {
+        // Every regular tile partitioned; remaining jokers are valid only if 0 or >= 3
+        return remOkeys === 0 || remOkeys >= 3;
       }
-    }
 
-    return (groupedCount + okeys.length) >= 14;
+      // Option 1: Same-number set across distinct colors (size 3 or 4)
+      const otherColors = [];
+      for (let c = 0; c < 4; c++) {
+        if (c !== firstC && counts[c][firstN] > 0) otherColors.push(c);
+      }
+
+      // Subsets of otherColors of size >= 1 (padded with Okeys if < 2)
+      const maskLimit = 1 << otherColors.length;
+      for (let mask = 0; mask < maskLimit; mask++) {
+        const chosen = [];
+        for (let i = 0; i < otherColors.length; i++) {
+          if (mask & (1 << i)) chosen.push(otherColors[i]);
+        }
+        const realCount = 1 + chosen.length;
+        for (const targetSize of [3, 4]) {
+          const okeysNeeded = targetSize - realCount;
+          if (okeysNeeded >= 0 && okeysNeeded <= remOkeys && realCount >= 1) {
+            counts[firstC][firstN]--;
+            for (const oc of chosen) counts[oc][firstN]--;
+            const ok = solve(remOkeys - okeysNeeded);
+            for (const oc of chosen) counts[oc][firstN]++;
+            counts[firstC][firstN]++;
+            if (ok) return true;
+          }
+        }
+      }
+
+      // Option 2: Same-color consecutive run covering (firstC, firstN)
+      // Any position in the run before firstN can be filled by an Okey
+      const maxStartShift = Math.min(firstN - 1, remOkeys);
+      for (let shift = 0; shift <= maxStartShift; shift++) {
+        const start = firstN - shift;
+        for (let end = Math.max(firstN, start + 2); end <= 13; end++) {
+          let okeysNeeded = 0;
+          const usedNums = [];
+          let valid = true;
+          for (let k = start; k <= end; k++) {
+            if (counts[firstC][k] > 0) {
+              usedNums.push(k);
+            } else {
+              okeysNeeded++;
+              if (okeysNeeded > remOkeys) {
+                valid = false;
+                break;
+              }
+            }
+          }
+          if (!valid) break;
+          for (const k of usedNums) counts[firstC][k]--;
+          const ok = solve(remOkeys - okeysNeeded);
+          for (const k of usedNums) counts[firstC][k]++;
+          if (ok) return true;
+        }
+      }
+
+      // Option 3: Classic Turkish Okey wraparound run [12, 13, 1]
+      if (firstN === 1 || firstN === 12 || firstN === 13) {
+        const wrapNums = [12, 13, 1];
+        let okeysNeeded = 0;
+        const usedWrap = [];
+        for (const k of wrapNums) {
+          if (counts[firstC][k] > 0) usedWrap.push(k);
+          else okeysNeeded++;
+        }
+        if (okeysNeeded <= remOkeys) {
+          for (const k of usedWrap) counts[firstC][k]--;
+          const ok = solve(remOkeys - okeysNeeded);
+          for (const k of usedWrap) counts[firstC][k]++;
+          if (ok) return true;
+        }
+      }
+
+      return false;
+    };
+
+    return solve(okeyCount);
   }
 
   // --- BOT ARTIFICIAL INTELLIGENCE ---

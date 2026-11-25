@@ -3,7 +3,9 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#090c13" />
   <meta name="description"
     content="Meta Quest 3 WebXR Batak, Pişti, Klasik Okey ve 101 Okey Oyunları. Canlı 3D insan figürleri, otantik Türk Kıraathanesi." />
@@ -46,34 +48,65 @@
 
       <!-- Top Right Controls -->
       <div class="top-controls interactive">
-        <button id="btn-voice" class="glass-btn voice-btn" title="3D Mekansal Sesli Sohbet (Mikrofon)">
-          <span id="voice-icon">🎙️</span> <span id="voice-label">Sesli Sohbet</span>
+        <button id="btn-voice" class="glass-btn voice-btn" title="Mikrofon Aç / Kapa (3D Sesli Sohbet)">
+          <span id="voice-icon">🎙️</span> <span id="voice-label">Mikrofon</span>
         </button>
-        <button id="btn-theme-modal" class="glass-btn theme-btn" title="Kıraathane Mekanı / Arka Plan Değiştir">
-          <span>🌆</span> Mekan
+        <div class="audio-popover-wrap">
+          <button id="btn-sound" class="glass-btn" title="Hoparlör Sesi / Mikrofon Test Ayarları">
+            <span id="sound-icon">🔊</span> <span id="sound-pct">85%</span>
+          </button>
+          <div id="audio-settings-popover" class="audio-popover hidden">
+            <div class="audio-row">
+              <span>🔊 Hoparlör Sesi</span>
+              <button id="btn-toggle-speaker-mute" class="action-chip" style="padding:4px 10px; font-size:0.78rem;">Açık</button>
+            </div>
+            <input type="range" id="slider-speaker-volume" min="0" max="100" value="85" class="audio-slider" />
+            <div class="audio-row" style="margin-top:8px;">
+              <span>🎙️ Mikrofon Seviyesi</span>
+              <button id="btn-test-mic" class="action-chip" style="padding:4px 10px; font-size:0.78rem;">Test Et</button>
+            </div>
+            <div class="mic-meter-track">
+              <div id="mic-meter-fill" class="mic-meter-fill"></div>
+            </div>
+            <div id="audio-popover-hint" style="font-size:0.74rem; color:#94a3b8; margin-top:6px;">
+              Mobil ve Quest 3'te mikrofon için HTTPS (port 3443) ile bağlanın.
+            </div>
+          </div>
+        </div>
+        <button id="btn-order-tea" class="glass-btn" title="Çaycı Hüseyin'den Taze Çay Söyle">
+          <span>🫖</span> <span>Çay Söyle</span>
         </button>
-        <button id="btn-multiplayer" class="glass-btn mp-btn" title="Çok Oyunculu Oda Kur / Katıl">
-          <span>🌐</span> Çok Oyunculu
+        <button id="btn-mobile-menu" class="glass-btn mobile-only-btn" title="Menü ve Diğer Seçenekler">
+          <span>☰</span>
         </button>
-        <button id="btn-menu" class="glass-btn" title="Oyun Seç / Menü">
-          <span>🎮</span> Tek Kişilik
-        </button>
-        <button id="btn-ambiance" class="glass-btn" title="Kahvehane Çay/Zar Ambiyansı">
-          <span id="ambiance-icon">☕</span> Kıraathane Sesi
-        </button>
-        <button id="btn-sound" class="glass-btn" title="Ses Aç/Kapat">
-          <span id="sound-icon">🔊</span>
-        </button>
-        <button id="btn-profile" class="glass-btn profile-btn" title="Oyuncu Girişi / Hesap">
-          <span id="profile-icon">👤</span> <span id="profile-label">Giriş Yap</span>
-        </button>
-        <button id="btn-toggle-ai" class="glass-btn ai-toggle-btn" style="display:none;" title="Yapay Zeka Asistanı Aç/Kapat">
-          <span>🤖</span> <span id="ai-toggle-label">AI Asistan</span>
-        </button>
-        <button id="btn-install-pwa" class="glass-btn install-btn" style="display:none;"
-          title="Quest / WebVR Uygulaması Olarak Yükle">
-          <span>📲</span> Yükle
-        </button>
+
+        <div id="secondary-controls" class="secondary-controls">
+          <button id="btn-multiplayer" class="glass-btn mp-btn" title="Çok Oyunculu Oda Kur / Katıl">
+            <span>🌐</span> Çok Oyunculu
+          </button>
+          <button id="btn-menu" class="glass-btn" title="Oyun Seç / Menü">
+            <span>🎮</span> Tek Kişilik
+          </button>
+          <button id="btn-theme-modal" class="glass-btn theme-btn" title="Kıraathane Mekanı / Arka Plan Değiştir">
+            <span>🌆</span> Mekan
+          </button>
+          <button id="btn-ambiance" class="glass-btn" title="Kahvehane Çay/Zar Ambiyansı">
+            <span id="ambiance-icon">☕</span> Kıraathane
+          </button>
+          <button id="btn-profile" class="glass-btn profile-btn" title="Oyuncu Girişi / Hesap">
+            <span id="profile-icon">👤</span> <span id="profile-label">Giriş Yap</span>
+          </button>
+          <button id="btn-toggle-log" class="glass-btn mobile-only-btn" title="Oyun Kayıtlarını Göster/Gizle">
+            <span>📜</span> Kayıtlar
+          </button>
+          <button id="btn-toggle-ai" class="glass-btn ai-toggle-btn" style="display:none;" title="Yapay Zeka Asistanı Aç/Kapat">
+            <span>🤖</span> <span id="ai-toggle-label">AI Asistan</span>
+          </button>
+          <button id="btn-install-pwa" class="glass-btn install-btn" style="display:none;"
+            title="Quest / WebVR Uygulaması Olarak Yükle">
+            <span>📲</span> Yükle
+          </button>
+        </div>
       </div>
     </div>
 
@@ -96,49 +129,88 @@
       </div>
     </div>
 
+    <!-- Live Round-by-Round Scoreboard (Yazboz) -->
+    <div id="scoreboard-panel" class="scoreboard-panel interactive hidden">
+      <div class="scoreboard-header">
+        <div class="scoreboard-title">
+          <span>📋</span> <span id="scoreboard-title-text">BATAK YAZBOZ</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span id="scoreboard-round-badge" class="scoreboard-badge">Tur 1/10</span>
+          <button id="btn-close-scoreboard" class="glass-btn" style="padding:2px 8px; font-size:0.75rem; min-height:26px;">✕</button>
+        </div>
+      </div>
+      <div id="scoreboard-live-bar" class="scoreboard-live-bar"></div>
+      <div class="scoreboard-table-wrap">
+        <table class="scoreboard-table">
+          <thead id="scoreboard-thead"></thead>
+          <tbody id="scoreboard-tbody"></tbody>
+          <tfoot id="scoreboard-tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
     <!-- Center Action Popups (Bidding / Trump / Okey Draw / 101 El Aç) -->
     <div id="action-panel" class="action-panel interactive">
       <div id="action-title" class="action-title">Teklif Verin (İhale)</div>
       <div id="action-buttons-container" class="action-button-row"></div>
     </div>
 
-    <!-- Bottom Bar -->
-    <div class="bottom-bar">
-      <!-- Live Game Feed Log -->
-      <div class="log-box interactive" id="game-log-box">
-        <div class="log-entry">Kıraathaneye hoş geldiniz! Masada yerinizi alın.</div>
+    <!-- Bottom Stack (Mobile Interactive Hand/Istaka Dock + Controls/Log) -->
+    <div class="bottom-dock-stack">
+      <div id="mobile-hand-dock" class="mobile-hand-dock interactive" aria-label="Mobil El ve Istaka Paneli" style="display: none;">
+        <div id="mobile-hand-toolbar" class="mobile-hand-toolbar"></div>
+        <div id="mobile-cards-tray" class="mobile-cards-tray" style="display: none;"></div>
+        <div id="mobile-istaka-tray" class="mobile-istaka-tray" style="display: none;">
+          <div id="mobile-istaka-row-0" class="mobile-istaka-row"></div>
+          <div id="mobile-istaka-row-1" class="mobile-istaka-row"></div>
+        </div>
       </div>
 
-      <!-- Contextual Game Action Controls -->
-      <div class="interactive" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-        
-        <!-- Okey & 101 Okey Specific Controls (Only in Okey/101) -->
-        <div id="okey-rack-controls" style="display: none; gap: 8px; align-items: center;">
-          <button id="btn-ai-sort" class="glass-btn ai-btn" style="display: none;" title="Yapay Zeka ile Perleri & Taşları En İdeal Şekilde Diz">
-            <span>🧠</span> AI Akıllı Diz
-          </button>
-          <button id="btn-sort-runs" class="glass-btn" title="Taşları Serilere ve Perlere Göre Diz (Fotoğraf Düzeni)">
-            <span>📐</span> Seri & Per Diz
-          </button>
-          <button id="btn-sort-pairs" class="glass-btn" title="Taşları Çiftlere ve Sayılara Göre Diz">
-            <span>👥</span> Çift Diz
-          </button>
-          <button id="btn-photo-demo" class="glass-btn" title="Fotoğraftaki Örnek Istaka Dizilimini Yükle" style="background: rgba(217, 119, 6, 0.25); border-color: #d97706; color: #fef08a;">
-            <span>📸</span> Fotoğraf Düzeni
-          </button>
+      <!-- Bottom Bar -->
+      <div class="bottom-bar">
+        <!-- Live Game Feed Log -->
+        <div class="log-box interactive" id="game-log-box">
+          <div class="log-entry">Kıraathaneye hoş geldiniz! Masada yerinizi alın.</div>
         </div>
 
-        <!-- Batak Specific Controls (Only in Batak) -->
-        <div id="batak-card-controls" style="display: none; gap: 8px; align-items: center;">
-          <button id="btn-sort-cards" class="glass-btn" title="Kartları Renklerine ve Büyüklüklerine Göre Sırala">
-            <span>🃏</span> Kartları Sırala
+        <!-- Contextual Game Action Controls -->
+        <div class="interactive" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          
+          <!-- Okey & 101 Okey Specific Controls (Only in Okey/101) -->
+          <div id="okey-rack-controls" style="display: none; gap: 8px; align-items: center;">
+            <button id="btn-ai-sort" class="glass-btn ai-btn" style="display: none;" title="Yapay Zeka ile Perleri & Taşları En İdeal Şekilde Diz">
+              <span>🧠</span> AI Akıllı Diz
+            </button>
+            <button id="btn-sort-runs" class="glass-btn" title="Taşları Serilere ve Perlere Göre Diz (Fotoğraf Düzeni)">
+              <span>📐</span> Seri & Per Diz
+            </button>
+            <button id="btn-sort-pairs" class="glass-btn" title="Taşları Çiftlere ve Sayılara Göre Diz">
+              <span>👥</span> Çift Diz
+            </button>
+            <button id="btn-photo-demo" class="glass-btn" title="Fotoğraftaki Örnek Istaka Dizilimini Yükle" style="background: rgba(217, 119, 6, 0.25); border-color: #d97706; color: #fef08a;">
+              <span>📸</span> Fotoğraf Düzeni
+            </button>
+          </div>
+
+          <!-- Batak Specific Controls (Only in Batak) -->
+          <div id="batak-card-controls" style="display: none; gap: 8px; align-items: center;">
+            <button id="btn-sort-cards" class="glass-btn" title="Kartları Renklerine ve Büyüklüklerine Göre Sırala">
+              <span>🃏</span> Kartları Sırala
+            </button>
+          </div>
+
+          <!-- Common Game Actions -->
+          <button id="btn-scoreboard" class="glass-btn" title="Her Elin Skor Tablosunu (Yazboz) Göster/Gizle">
+            <span>📋</span> Skorlar
+          </button>
+          <button id="btn-new-hand" class="glass-btn primary">
+            <span>🔄</span> Yeni El Başlat
+          </button>
+          <button id="btn-leave-game" class="glass-btn danger" title="10 Tur Bitmeden Oyundan Ayrıl">
+            <span>🚪</span> Oyundan Ayrıl
           </button>
         </div>
-
-        <!-- Common Game Actions -->
-        <button id="btn-new-hand" class="glass-btn primary">
-          <span>🔄</span> Yeni El Başlat
-        </button>
       </div>
     </div>
   </div>
@@ -153,7 +225,7 @@
         <div class="game-card-btn selected" id="opt-batak">
           <div class="game-icon">♠️</div>
           <div class="game-name">İhaleli Batak</div>
-          <div class="game-tag">4 Kişilik • 13 Kart • Koz</div>
+          <div class="game-tag">4 Kişilik • En Az 10 Tur • Koz</div>
         </div>
 
         <div class="game-card-btn" id="opt-okey101">
@@ -186,9 +258,18 @@
 
   <!-- Multiplayer Hub Modal (Oda Kur / Katıl) -->
   <div id="multiplayer-modal" class="modal-overlay hidden">
-    <div class="modal-card interactive" style="max-width: 640px;">
+    <div class="modal-card interactive" style="max-width: 660px; max-height: 92vh; overflow-y: auto;">
       <h2>🌐 ÇOK OYUNCULU KIRAATHANE</h2>
-      <p class="modal-desc">Arkadaşlarınızla aynı masaya oturun, şifreli oda kurun veya odaya katılın.</p>
+      <p class="modal-desc" style="margin-bottom: 10px;">Gerçek zamanlı WebSocket sunucusu üzerinden aynı masada oynayın ve konuşun.</p>
+
+      <!-- Server Connection Status Bar -->
+      <div class="mp-server-bar">
+        <span id="mp-server-status" class="mp-server-pill">🟡 Sunucuya bağlanılıyor...</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <input type="text" id="input-server-url" class="input-field" placeholder="Otomatik (Mevcut Sunucu)" style="margin:0; padding:6px 10px; font-size:0.8rem; width:190px; text-align:left;" />
+          <button id="btn-reconnect-server" class="glass-btn" style="padding:6px 10px; font-size:0.78rem;">Bağlan</button>
+        </div>
+      </div>
 
       <!-- MP Tabs -->
       <div class="mp-tabs">
@@ -215,7 +296,7 @@
           <div class="mp-count-btn selected" data-count="4">4 Kişilik</div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+        <div class="mp-two-col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
           <div>
             <label class="form-label">Kullanıcı Adınız:</label>
             <input type="text" id="input-create-name" class="input-field" value="Masa Sahibi" maxlength="15" />
@@ -241,7 +322,15 @@
 
       <!-- JOIN ROOM FORM -->
       <div id="view-join-room" class="mp-form-view hidden">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label class="form-label" style="margin:0;">Açık Masalar (Tek Tıkla Seç):</label>
+          <button id="btn-refresh-rooms" class="glass-btn" style="padding:4px 10px; font-size:0.75rem;">🔄 Yenile</button>
+        </div>
+        <div id="mp-public-rooms-list" class="mp-rooms-list">
+          <div style="color:#94a3b8; font-size:0.82rem; padding:8px;">Açık masa taranıyor...</div>
+        </div>
+
+        <div class="mp-two-col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div>
             <label class="form-label">4 Haneli Oda Kodu:</label>
             <input type="text" id="input-join-code" class="input-field" placeholder="Örn: AB12" maxlength="4"
@@ -310,7 +399,7 @@
 
   <!-- User Profile & Authentication (Register / Login) Modal -->
   <div id="auth-modal" class="modal-overlay hidden">
-    <div class="modal-card interactive" style="max-width: 440px;">
+    <div class="modal-card interactive" style="max-width: 480px; max-height: 90dvh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 12px; margin-bottom: 16px;">
         <h2 id="auth-modal-title" style="margin: 0; font-size: 1.3rem;">OYUNCU HESABI</h2>
         <button id="btn-close-auth-modal" class="glass-btn" style="padding: 4px 10px; font-size: 0.85rem;">✕</button>
@@ -318,16 +407,29 @@
 
       <!-- VIEW 1: Logged-in Profile Card -->
       <div id="auth-logged-in-view" class="hidden" style="text-align: center;">
-        <div id="auth-avatar-icon" style="font-size: 3.2rem; margin-bottom: 8px;">👑</div>
-        <div id="auth-user-name" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-gold);">Mücahit Korkmaz</div>
-        <div id="auth-user-email-display" style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 14px;">mchtkrkmz@gmail.com</div>
-        <div id="auth-vip-badge" class="badge-tag" style="display: inline-block; margin-bottom: 20px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 700;">
-          ✨ VIP MASTER GELİŞTİRİCİ AKTİF (AI ASİSTAN AÇIK)
+        <div id="auth-avatar-icon" style="font-size: 3.2rem; margin-bottom: 8px;">👤</div>
+        <div id="auth-user-name" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-gold);">Oyuncu</div>
+        <div id="auth-user-email-display" style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 14px;"></div>
+        <div id="auth-vip-badge" class="badge-tag" style="display: none; margin-bottom: 14px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 700;">
+          👑 YÖNETİCİ HESABI (TÜM OYUNLARDA AI &amp; YETKİ YÖNETİMİ AÇIK)
         </div>
-        <div id="auth-regular-badge" class="badge-tag hidden" style="display: inline-block; margin-bottom: 20px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6;">
-          🎮 STANDART OYUNCU HESABI
+        <div id="auth-ai-granted-badge" class="badge-tag hidden" style="display: inline-block; margin-bottom: 14px; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981;">
+          🤖 YAPAY ZEKA DESTEĞİ YETKİLİ (YÖNETİCİ ONAYLI)
         </div>
-        <div>
+        <div id="auth-regular-badge" class="badge-tag hidden" style="display: inline-block; margin-bottom: 14px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6;">
+          🎮 ÜYE HESABI (Otomatik Dizme Açık)
+        </div>
+
+        <!-- Admin Panel: Grant/Revoke AI Access per Registered User (mchtkrkmz@gmail.com ONLY) -->
+        <div id="admin-ai-panel" class="admin-ai-panel hidden">
+          <div class="admin-ai-header">
+            <span>👑 ÜYE YAPAY ZEKA YETKİ YÖNETİMİ</span>
+            <button id="btn-refresh-admin-users" class="glass-btn" style="padding: 4px 10px; font-size: 0.76rem;">🔄 Yenile</button>
+          </div>
+          <div id="admin-users-list" class="admin-users-list"></div>
+        </div>
+
+        <div style="margin-top: 14px;">
           <button id="btn-auth-logout" class="glass-btn danger" style="width: 100%; justify-content: center; padding: 12px;">
             🚪 Hesaptan Çıkış Yap
           </button>
@@ -380,6 +482,7 @@
         </div>
       </div>
     </div>
+  </div>
   <!-- Theme / Kıraathane Environment Selector Modal -->
   <div id="theme-modal" class="modal-overlay hidden">
     <div class="modal-card interactive" style="max-width: 680px; width: 92%;">

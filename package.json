@@ -5,12 +5,16 @@
   "scripts": {
     "dev": "vite --host --port 5173",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/server.js",
+    "start": "vite build && node server/server.js"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
     "peerjs": "^1.5.4",
-    "three": "^0.170.0"
+    "selfsigned": "^5.5.0",
+    "three": "^0.170.0",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "vite": "^6.0.0"

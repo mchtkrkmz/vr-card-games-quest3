@@ -36,12 +36,16 @@ export class PistiGameEngine {
   initPlayers(customPlayerNames = []) {
     this.players = [];
     for (let i = 0; i < this.playerCount; i++) {
-      const isHuman = i === 0;
-      const defaultName = isHuman ? 'Oyuncu (Siz)' : `Bot ${i}`;
+      const cfg = customPlayerNames[i];
+      const isObj = cfg && typeof cfg === 'object';
+      const isBot = isObj ? Boolean(cfg.isBot) : i !== 0;
+      const defaultName = !isBot ? (i === 0 ? 'Oyuncu (Siz)' : `Oyuncu ${i + 1}`) : `Bot ${i}`;
       this.players.push({
         id: i,
-        name: customPlayerNames[i] || defaultName,
-        isBot: !isHuman,
+        name: (isObj ? cfg.name : cfg) || defaultName,
+        isBot,
+        avatarId: isObj ? cfg.avatarId || null : null,
+        clientId: isObj ? cfg.clientId || null : null,
         hand: [],
         captured: [],
         pistis: [], // array of { type: 'normal'|'jack', points: 10|20 }
@@ -49,6 +53,55 @@ export class PistiGameEngine {
         totalScore: 0
       });
     }
+  }
+
+  getSnapshot() {
+    return {
+      gameType: 'PISTI',
+      playerCount: this.playerCount,
+      targetScore: this.targetScore,
+      currentTurn: this.currentTurn,
+      roundDealCount: this.roundDealCount,
+      maxDeals: this.maxDeals,
+      lastCapturerIndex: this.lastCapturerIndex,
+      gameState: this.gameState,
+      deckCount: this.deck.length,
+      tableCards: this.tableCards,
+      players: this.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        isBot: p.isBot,
+        avatarId: p.avatarId || null,
+        clientId: p.clientId || null,
+        hand: p.hand,
+        capturedCount: (p.captured || []).length,
+        pistis: p.pistis || [],
+        roundScore: p.roundScore,
+        totalScore: p.totalScore
+      })),
+      gameLog: this.gameLog.slice(0, 8)
+    };
+  }
+
+  applySnapshot(snap) {
+    if (!snap) return;
+    this.playerCount = snap.playerCount ?? this.playerCount;
+    this.targetScore = snap.targetScore ?? this.targetScore;
+    this.currentTurn = snap.currentTurn ?? this.currentTurn;
+    this.roundDealCount = snap.roundDealCount ?? this.roundDealCount;
+    this.maxDeals = snap.maxDeals ?? this.maxDeals;
+    this.lastCapturerIndex = snap.lastCapturerIndex ?? -1;
+    this.gameState = snap.gameState ?? this.gameState;
+    this.tableCards = snap.tableCards || [];
+    // Dummy deck array length indicator for UI display on guests
+    this.deck = new Array(snap.deckCount ?? 0).fill(null);
+    this.players = (snap.players || []).map(p => ({
+      ...p,
+      hand: [...(p.hand || [])],
+      captured: new Array(p.capturedCount || 0).fill(null),
+      pistis: [...(p.pistis || [])]
+    }));
+    if (Array.isArray(snap.gameLog)) this.gameLog = [...snap.gameLog];
   }
 
   startNewMatch() {

@@ -10,15 +10,16 @@ export class AIAdvisorEngine {
   // ==========================================
   // 1. KLASIK OKEY & 101 OKEY ADVISOR
   // ==========================================
-  getOkeyAdvice(gameEngine, is101 = false) {
-    if (!gameEngine || !gameEngine.players || !gameEngine.players[0]) {
+  getOkeyAdvice(gameEngine, is101 = false, seatIndex = 0) {
+    if (!gameEngine || !gameEngine.players || !gameEngine.players[seatIndex]) {
       return null;
     }
 
-    const player = gameEngine.players[0];
+    const player = gameEngine.players[seatIndex];
     const hand = [...player.hand];
     const discardPiles = gameEngine.discardPiles || [[], [], [], []];
-    const leftDiscard = discardPiles[3] || [];
+    const leftSeat = (seatIndex + 3) % 4;
+    const leftDiscard = discardPiles[leftSeat] || [];
     const topDiscard = leftDiscard.length > 0 ? leftDiscard[leftDiscard.length - 1] : null;
 
     // A. Gather seen tiles on the table (dead tiles tracking)
@@ -37,7 +38,7 @@ export class AIAdvisorEngine {
 
     // C. Discard pile evaluation (Should player take left discard?)
     let drawAdvice = null;
-    if (gameEngine.turnPhase === 'DRAW' && gameEngine.currentTurn === 0) {
+    if (gameEngine.turnPhase === 'DRAW' && gameEngine.currentTurn === seatIndex) {
       if (topDiscard) {
         const potentialHand = [...hand, topDiscard];
         const newAnalysis = this.analyzeOkeyHand(potentialHand, seenTilesCount);
@@ -320,13 +321,14 @@ export class AIAdvisorEngine {
   // ==========================================
   // 2. PİŞTİ AI ADVISOR
   // ==========================================
-  getPistiAdvice(gameEngine) {
-    if (!gameEngine || !gameEngine.players || !gameEngine.players[0]) return null;
+  getPistiAdvice(gameEngine, seatIndex = 0) {
+    if (!gameEngine || !gameEngine.players || !gameEngine.players[seatIndex]) return null;
 
-    const player = gameEngine.players[0];
+    const player = gameEngine.players[seatIndex];
     const hand = [...player.hand];
     const tableCards = gameEngine.tableCards || [];
-    const topCard = tableCards.length > 0 ? tableCards[tableCards.length - 1] : null;
+    const topEntry = tableCards.length > 0 ? tableCards[tableCards.length - 1] : null;
+    const topCard = topEntry ? (topEntry.card || topEntry) : null;
 
     if (hand.length === 0) return null;
 
@@ -356,13 +358,12 @@ export class AIAdvisorEngine {
     } else {
       // Safe discard: Pick lowest value non-point card, save Jacks and Aces
       const safePool = nonJacks.length > 0 ? nonJacks : hand;
-      // Sort by card priority: avoid throwing Karo 10 (+3), Sinek 2 (+2), As (+1)
       safePool.sort((a, b) => {
         const getCardScore = (c) => {
-          if (c.suit === 'DIAMONDS' && c.value === 10) return 100; // Keep Karo 10
-          if (c.suit === 'CLUBS' && c.value === 2) return 90;     // Keep Sinek 2
-          if (c.value === 1) return 80;                            // Keep As
-          if (c.value === 11) return 95;                           // Keep Vale
+          if ((c.suit === 'D' || c.suit === 'DIAMONDS') && c.value === 10) return 100;
+          if ((c.suit === 'C' || c.suit === 'CLUBS') && c.value === 2) return 90;
+          if (c.value === 14 || c.value === 1) return 80;
+          if (c.value === 11) return 95;
           return c.value;
         };
         return getCardScore(a) - getCardScore(b);
@@ -389,10 +390,10 @@ export class AIAdvisorEngine {
   // ==========================================
   // 3. İHALELİ BATAK AI ADVISOR
   // ==========================================
-  getBatakAdvice(gameEngine) {
-    if (!gameEngine || !gameEngine.players || !gameEngine.players[0]) return null;
+  getBatakAdvice(gameEngine, seatIndex = 0) {
+    if (!gameEngine || !gameEngine.players || !gameEngine.players[seatIndex]) return null;
 
-    const player = gameEngine.players[0];
+    const player = gameEngine.players[seatIndex];
     const hand = [...player.hand];
 
     // A. Bidding Phase Advisor
@@ -402,7 +403,7 @@ export class AIAdvisorEngine {
 
     // B. Playing Phase Advisor
     if (gameEngine.gameState === 'PLAYING') {
-      const legalCards = gameEngine.getLegalCards(0);
+      const legalCards = gameEngine.getLegalCards(seatIndex);
       const currentTrick = gameEngine.currentTrick || [];
       const trumpSuit = gameEngine.trumpSuit;
 
@@ -466,24 +467,22 @@ export class AIAdvisorEngine {
 
   getBatakBiddingAdvice(hand, currentHighestBid) {
     // Estimate trick potential
-    const suits = { SPADES: [], HEARTS: [], DIAMONDS: [], CLUBS: [] };
+    const suits = { S: [], H: [], D: [], C: [] };
     hand.forEach(c => {
       if (suits[c.suit]) suits[c.suit].push(c);
     });
 
-    let bestSuit = 'SPADES';
+    let bestSuit = 'S';
     let maxTrickEstimate = 0;
 
     for (const suit in suits) {
       const cards = suits[suit];
       let tricks = 0;
-      // Aces give +1 trick, Kings with support give +0.8, Queens give +0.5
       cards.forEach(c => {
         if (c.value === 14) tricks += 1.0;
         else if (c.value === 13 && cards.length >= 2) tricks += 0.8;
         else if (c.value === 12 && cards.length >= 3) tricks += 0.5;
       });
-      // Length bonus for trump suit
       if (cards.length >= 5) tricks += (cards.length - 4) * 0.9;
       if (cards.length >= 4) tricks += 0.5;
 
@@ -495,7 +494,7 @@ export class AIAdvisorEngine {
 
     const estimatedBid = Math.max(0, Math.floor(maxTrickEstimate));
     const canBid = estimatedBid > currentHighestBid;
-    const suitNames = { SPADES: 'Maça ♠', HEARTS: 'Kupa ♥', DIAMONDS: 'Karo ♦', CLUBS: 'Sinek ♣' };
+    const suitNames = { S: 'Maça ♠', H: 'Kupa ♥', D: 'Karo ♦', C: 'Sinek ♣' };
 
     let reason = '';
     if (canBid && estimatedBid >= 5) {

@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 
+// Gerçekçi Klasik İskambil Kartı Renkleri (Yakut Kırmızı Kupa/Karo, Karbon Siyah Maça/Sinek)
 export const SUITS = {
-  S: { id: 'S', name: 'Maça', symbol: '♠', color: '#1a1e24', secondary: '#2d3748', isRed: false },
-  H: { id: 'H', name: 'Kupa', symbol: '♥', color: '#c53030', secondary: '#e53e3e', isRed: true },
-  D: { id: 'D', name: 'Karo', symbol: '♦', color: '#d69e2e', secondary: '#dd6b20', isRed: true },
-  C: { id: 'C', name: 'Sinek', symbol: '♣', color: '#276749', secondary: '#2f855a', isRed: false }
+  S: { id: 'S', name: 'Maça', symbol: '♠', color: '#0f172a', secondary: '#1e293b', isRed: false },
+  H: { id: 'H', name: 'Kupa', symbol: '♥', color: '#b91c1c', secondary: '#dc2626', isRed: true },
+  D: { id: 'D', name: 'Karo', symbol: '♦', color: '#b91c1c', secondary: '#dc2626', isRed: true },
+  C: { id: 'C', name: 'Sinek', symbol: '♣', color: '#0f172a', secondary: '#1e293b', isRed: false },
 };
 
 export const RANKS = [
@@ -20,7 +21,7 @@ export const RANKS = [
   { rank: 'J', value: 11, label: 'J', court: 'Vale' },
   { rank: 'Q', value: 12, label: 'Q', court: 'Kız' },
   { rank: 'K', value: 13, label: 'K', court: 'Papaz' },
-  { rank: 'A', value: 14, label: 'A', court: 'As' }
+  { rank: 'A', value: 14, label: 'A', court: 'As' },
 ];
 
 export function createStandardDeck() {
@@ -39,7 +40,7 @@ export function createStandardDeck() {
         rank: r.rank,
         value: r.value,
         label: r.label,
-        court: r.court || null
+        court: r.court || null,
       });
     }
   }
@@ -55,11 +56,73 @@ export function shuffleDeck(deck) {
   return shuffled;
 }
 
-// Procedural Card Canvas Texture Generator with High-DPI crisp rendering
+// High-Resolution Procedural Linen Playing Card Texture Generator (512x716)
 class CardTextureGenerator {
   constructor() {
     this.cache = new Map();
     this.backTexture = null;
+  }
+
+  // Vector Bézier Suit Symbols (OS fontlarından bağımsız keskin ve gerçekçi semboller)
+  drawSuitSymbol(ctx, suitId, cx, cy, size, fillStyle) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (fillStyle) ctx.fillStyle = fillStyle;
+    const s = size * 0.5;
+
+    ctx.beginPath();
+    if (suitId === 'H') {
+      // Kupa (Heart)
+      ctx.moveTo(0, s * 0.88);
+      ctx.bezierCurveTo(-s * 1.15, s * 0.15, -s * 1.05, -s * 0.92, -s * 0.48, -s * 0.92);
+      ctx.bezierCurveTo(-s * 0.16, -s * 0.92, 0, -s * 0.56, 0, -s * 0.36);
+      ctx.bezierCurveTo(0, -s * 0.56, s * 0.16, -s * 0.92, s * 0.48, -s * 0.92);
+      ctx.bezierCurveTo(s * 1.05, -s * 0.92, s * 1.15, s * 0.15, 0, s * 0.88);
+      ctx.closePath();
+      ctx.fill();
+    } else if (suitId === 'D') {
+      // Karo (Diamond - subtly concave luxury casino diamond)
+      ctx.moveTo(0, -s * 1.0);
+      ctx.quadraticCurveTo(s * 0.32, -s * 0.32, s * 0.82, 0);
+      ctx.quadraticCurveTo(s * 0.32, s * 0.32, 0, s * 1.0);
+      ctx.quadraticCurveTo(-s * 0.32, s * 0.32, -s * 0.82, 0);
+      ctx.quadraticCurveTo(-s * 0.32, -s * 0.32, 0, -s * 1.0);
+      ctx.closePath();
+      ctx.fill();
+    } else if (suitId === 'S') {
+      // Maça (Spade)
+      ctx.moveTo(0, -s * 1.0);
+      ctx.bezierCurveTo(s * 0.22, -s * 0.58, s * 1.04, -s * 0.08, s * 0.92, s * 0.42);
+      ctx.bezierCurveTo(s * 0.84, s * 0.72, s * 0.38, s * 0.76, s * 0.14, s * 0.42);
+      ctx.quadraticCurveTo(s * 0.14, s * 0.76, s * 0.34, s * 0.98);
+      ctx.lineTo(-s * 0.34, s * 0.98);
+      ctx.quadraticCurveTo(-s * 0.14, s * 0.76, -s * 0.14, s * 0.42);
+      ctx.bezierCurveTo(-s * 0.38, s * 0.76, -s * 0.84, s * 0.72, -s * 0.92, s * 0.42);
+      ctx.bezierCurveTo(-s * 1.04, -s * 0.08, -s * 0.22, -s * 0.58, 0, -s * 1.0);
+      ctx.closePath();
+      ctx.fill();
+    } else if (suitId === 'C') {
+      // Sinek (Club)
+      const rTop = s * 0.40;
+      const rSide = s * 0.38;
+      ctx.arc(0, -s * 0.44, rTop, 0, Math.PI * 2);
+      ctx.moveTo(-s * 0.42 + rSide, s * 0.12);
+      ctx.arc(-s * 0.42, s * 0.12, rSide, 0, Math.PI * 2);
+      ctx.moveTo(s * 0.42 + rSide, s * 0.12);
+      ctx.arc(s * 0.42, s * 0.12, rSide, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.12, s * 0.05);
+      ctx.lineTo(s * 0.12, s * 0.05);
+      ctx.quadraticCurveTo(s * 0.14, s * 0.68, s * 0.34, s * 0.96);
+      ctx.lineTo(-s * 0.34, s * 0.96);
+      ctx.quadraticCurveTo(-s * 0.14, s * 0.68, -s * 0.12, s * 0.05);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
   }
 
   getBackTexture() {
@@ -72,41 +135,44 @@ class CardTextureGenerator {
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    // Royal Navy & Gold ornamental casino card back
-    ctx.fillStyle = '#0f172a';
+    // Warm ivory outer margin
+    ctx.fillStyle = '#faf7f0';
     ctx.fillRect(0, 0, width, height);
 
-    // Outer gold border
-    ctx.lineWidth = 14;
-    ctx.strokeStyle = '#d4af37';
-    ctx.strokeRect(16, 16, width - 32, height - 32);
+    const m = 22;
+    ctx.fillStyle = '#7f1d1d';
+    ctx.beginPath();
+    ctx.roundRect(m, m, width - m * 2, height - m * 2, 22);
+    ctx.fill();
 
-    // Inner thin border
+    // Gold Kem/Bicycle outer & inner frame rings
     ctx.lineWidth = 4;
-    ctx.strokeStyle = '#fef08a';
-    ctx.strokeRect(28, 28, width - 56, height - 56);
+    ctx.strokeStyle = '#e2b842';
+    ctx.beginPath();
+    ctx.roundRect(m + 8, m + 8, width - (m + 8) * 2, height - (m + 8) * 2, 16);
+    ctx.stroke();
 
-    // Intricate geometric mandala pattern
     const cx = width / 2;
     const cy = height / 2;
-    
-    // Gradient center
-    const radGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 260);
-    radGrad.addColorStop(0, '#1e3a8a');
-    radGrad.addColorStop(0.7, '#172554');
-    radGrad.addColorStop(1, '#090d16');
-    ctx.fillStyle = radGrad;
-    ctx.fillRect(32, 32, width - 64, height - 64);
 
-    // Repeated diamond lattice
+    const radGrad = ctx.createRadialGradient(cx, cy, 12, cx, cy, 270);
+    radGrad.addColorStop(0, '#991b1b');
+    radGrad.addColorStop(0.6, '#7f1d1d');
+    radGrad.addColorStop(1, '#450a0a');
+    ctx.fillStyle = radGrad;
+    ctx.beginPath();
+    ctx.roundRect(m + 16, m + 16, width - (m + 16) * 2, height - (m + 16) * 2, 12);
+    ctx.fill();
+
     ctx.save();
     ctx.beginPath();
-    ctx.rect(32, 32, width - 64, height - 64);
+    ctx.roundRect(m + 16, m + 16, width - (m + 16) * 2, height - (m + 16) * 2, 12);
     ctx.clip();
 
-    ctx.strokeStyle = 'rgba(212, 175, 55, 0.25)';
-    ctx.lineWidth = 2;
-    const step = 28;
+    // Fine Ottoman filigree diamond lattice
+    ctx.strokeStyle = 'rgba(253, 224, 71, 0.24)';
+    ctx.lineWidth = 1.8;
+    const step = 24;
     for (let x = -width; x < width * 2; x += step) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -119,25 +185,44 @@ class CardTextureGenerator {
       ctx.stroke();
     }
 
-    // Center Emblem
+    // Top & bottom rosette flourishes
+    [130, height - 130].forEach((ry) => {
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(cx, ry, 42, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, ry, 24, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+
+    // Center golden medallion
     ctx.translate(cx, cy);
-    ctx.strokeStyle = '#d4af37';
-    ctx.fillStyle = '#1e293b';
-    ctx.lineWidth = 6;
+    ctx.fillStyle = '#450a0a';
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(0, 0, 90, 0, Math.PI * 2);
+    ctx.arc(0, 0, 76, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 64, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 36px "Cinzel", "Times New Roman", serif';
+    ctx.font = 'bold 28px "Cinzel", Georgia, serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('VR 52', 0, -10);
+    ctx.fillText('KIRAATHANE', 0, -10);
 
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = '#d4af37';
-    ctx.fillText('★ QUEST 3 ★', 0, 24);
+    // 4 crisp vector mini-suits inside medallion
+    const miniCols = [-36, -12, 12, 36];
+    ['S', 'H', 'D', 'C'].forEach((sId, idx) => {
+      this.drawSuitSymbol(ctx, sId, miniCols[idx], 22, 16, '#fbbf24');
+    });
 
     ctx.restore();
 
@@ -159,61 +244,72 @@ class CardTextureGenerator {
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    // Ivory Paper background with subtle texture
-    ctx.fillStyle = '#fcfbfa';
+    // Warm realistic ivory linen card stock
+    const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+    bgGrad.addColorStop(0, '#ffffff');
+    bgGrad.addColorStop(0.5, '#fcfaf4');
+    bgGrad.addColorStop(1, '#f4efe4');
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, width, height);
 
-    // Subtle edge highlight
+    // Subtle air-cushion linen crosshatch weave
+    ctx.strokeStyle = 'rgba(170, 158, 138, 0.06)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < height; y += 5) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    for (let x = 0; x < width; x += 6) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+
+    // Crisp outer hair-line card rim
     ctx.lineWidth = 3;
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.strokeRect(6, 6, width - 12, height - 12);
+    ctx.strokeStyle = '#dfd8ca';
+    ctx.beginPath();
+    ctx.roundRect(5, 5, width - 10, height - 10, 26);
+    ctx.stroke();
 
     const suit = SUITS[card.suit];
-    // High-contrast 4-color suit scheme for instant VR recognition
-    const suitColors = {
-      S: '#0f172a', // Jet Black
-      H: '#dc2626', // Crimson Red
-      D: '#ea580c', // Amber Orange
-      C: '#16a34a'  // Forest Green
-    };
-    const suitColor = suitColors[card.suit] || (suit.isRed ? '#dc2626' : '#0f172a');
+    const suitColor = suit.isRed ? '#be123c' : '#0f172a';
 
-    // Draw Corner Indices (Top-Left & Bottom-Right) with high-contrast backing pill
-    const drawIndex = (x, y, angle) => {
+    // Oversized razor-sharp corner rank + vector suit indices (always visible in fan)
+    const drawCornerIndex = (x, y, angle) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(angle);
 
-      // Dedicated crisp white backing pill for maximum legibility in VR
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.roundRect(-34, -10, 68, 126, 12);
-      ctx.fill();
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.stroke();
-
       ctx.fillStyle = suitColor;
-      ctx.font = '900 62px "Outfit", "Segoe UI", sans-serif';
+      ctx.font = '800 66px "Outfit", "Segoe UI", Arial, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(card.rank, 0, 0);
 
-      ctx.font = '50px sans-serif';
-      ctx.fillText(suit.symbol, 0, 60);
+      if (card.rank === '10') {
+        ctx.save();
+        ctx.scale(0.82, 1.0);
+        ctx.fillText('10', 0, 0);
+        ctx.restore();
+      } else {
+        ctx.fillText(card.rank, 0, 0);
+      }
 
+      this.drawSuitSymbol(ctx, suit.id, 0, 94, 42, suitColor);
       ctx.restore();
     };
 
-    drawIndex(46, 26, 0);
-    drawIndex(width - 46, height - 26, Math.PI);
+    drawCornerIndex(48, 24, 0);
+    drawCornerIndex(width - 48, height - 24, Math.PI);
 
-    // Center Illustration or Pips
     const cx = width / 2;
     const cy = height / 2;
 
     if (['J', 'Q', 'K'].includes(card.rank)) {
-      this.drawCourtCard(ctx, card, cx, cy, suitColor, suit);
+      this.drawDoubleHeadedCourtCard(ctx, card, cx, cy, suitColor, suit);
     } else if (card.rank === 'A') {
       this.drawAceCard(ctx, suit, cx, cy, suitColor);
     } else {
@@ -228,107 +324,170 @@ class CardTextureGenerator {
   }
 
   drawAceCard(ctx, suit, cx, cy, color) {
-    // Large ornamental Ace
-    ctx.fillStyle = color;
-    ctx.font = '180px sans-serif';
+    if (suit.id === 'S') {
+      // Ornate Classic Ace of Spades filigree ring
+      ctx.save();
+      ctx.translate(cx, cy - 8);
+      ctx.strokeStyle = '#c59b27';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 128, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 118, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      this.drawSuitSymbol(ctx, 'S', cx, cy - 10, 178, color);
+    } else {
+      this.drawSuitSymbol(ctx, suit.id, cx, cy - 12, 172, color);
+    }
+
+    ctx.font = 'bold 24px "Cinzel", Georgia, serif';
+    ctx.fillStyle = suit.isRed ? '#9f1239' : '#0f172a';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0,0,0,0.15)';
-    ctx.shadowBlur = 12;
-    ctx.fillText(suit.symbol, cx, cy - 10);
-    ctx.shadowBlur = 0;
-
-    // Center label
-    ctx.font = 'bold 22px "Cinzel", "Georgia", serif';
-    ctx.fillStyle = suit.isRed ? '#991b1b' : '#374151';
-    ctx.fillText(suit.name.toUpperCase(), cx, cy + 120);
+    ctx.fillText(suit.name.toUpperCase(), cx, cy + 148);
   }
 
-  drawCourtCard(ctx, card, cx, cy, color, suit) {
-    const boxW = 280;
-    const boxH = 430;
-    
-    // Outer court border
-    ctx.strokeStyle = '#d4af37';
+  drawDoubleHeadedCourtCard(ctx, card, cx, cy, suitColor, suit) {
+    const boxW = 292;
+    const boxH = 480;
+    const left = cx - boxW / 2;
+    const top = cy - boxH / 2;
+
+    // Gold inner court frame
+    ctx.fillStyle = '#faf6eb';
+    ctx.fillRect(left, top, boxW, boxH);
+
+    ctx.strokeStyle = '#c59b27';
     ctx.lineWidth = 4;
-    ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+    ctx.strokeRect(left, top, boxW, boxH);
+    ctx.strokeStyle = suitColor;
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(left + 7, top + 7, boxW - 14, boxH - 14);
 
-    // Decorative inner background
-    const courtGrad = ctx.createLinearGradient(0, cy - boxH / 2, 0, cy + boxH / 2);
-    courtGrad.addColorStop(0, suit.isRed ? '#fef2f2' : '#f0fdf4');
-    courtGrad.addColorStop(1, '#f8fafc');
-    ctx.fillStyle = courtGrad;
-    ctx.fillRect(cx - boxW / 2 + 4, cy - boxH / 2 + 4, boxW - 8, boxH - 8);
+    // Subtle cream & royal tint halves
+    const primaryCoat = suit.isRed ? '#b91c1c' : '#1e3a5f';
+    const accentGold = '#eab308';
+    const skinTone = '#f3ceb0';
+    const hairColor = card.rank === 'Q' ? '#92400e' : (card.rank === 'K' ? '#78716c' : '#334155');
 
-    // Traditional Court Character silhouette & emblems
+    const drawHalfBust = (isInverted) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (isInverted) ctx.rotate(Math.PI);
+
+      // Clip to top half of court box
+      ctx.beginPath();
+      ctx.rect(-boxW / 2 + 8, -boxH / 2 + 8, boxW - 16, boxH / 2 - 8);
+      ctx.clip();
+
+      // Royal cloak / robe base near divider line
+      ctx.fillStyle = primaryCoat;
+      ctx.beginPath();
+      ctx.roundRect(-84, -84, 168, 96, [28, 28, 0, 0]);
+      ctx.fill();
+
+      // Gold geometric diagonal sash & collar
+      ctx.fillStyle = accentGold;
+      ctx.beginPath();
+      ctx.moveTo(-84, -36);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(84, -52);
+      ctx.lineTo(84, -32);
+      ctx.lineTo(0, 14);
+      ctx.lineTo(-84, -18);
+      ctx.closePath();
+      ctx.fill();
+
+      // White ermine collar
+      ctx.fillStyle = '#fefce8';
+      ctx.beginPath();
+      ctx.roundRect(-36, -86, 72, 22, 10);
+      ctx.fill();
+
+      // Stylized royal portrait head
+      ctx.fillStyle = skinTone;
+      ctx.beginPath();
+      ctx.ellipse(0, -124, 34, 40, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#9a6b4c';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+
+      // Hair & beard (King has beard, Jack crisp sideburns, Queen long locks)
+      ctx.fillStyle = hairColor;
+      if (card.rank === 'Q') {
+        ctx.beginPath();
+        ctx.arc(-28, -118, 16, 0, Math.PI * 2);
+        ctx.arc(28, -118, 16, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (card.rank === 'K') {
+        ctx.beginPath();
+        ctx.arc(0, -104, 24, 0, Math.PI);
+        ctx.fill();
+      }
+
+      // Stylized eyes & brow
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(-11, -126, 3.2, 0, Math.PI * 2);
+      ctx.arc(11, -126, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Crown or Royal Beret
+      ctx.fillStyle = accentGold;
+      ctx.beginPath();
+      if (card.rank === 'J') {
+        // Jack's feathered cap
+        ctx.fillStyle = primaryCoat;
+        ctx.ellipse(0, -158, 38, 14, -0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = accentGold;
+        ctx.fillRect(-34, -155, 68, 8);
+      } else {
+        ctx.moveTo(-36, -152);
+        ctx.lineTo(-26, -184);
+        ctx.lineTo(-12, -162);
+        ctx.lineTo(0, -192);
+        ctx.lineTo(12, -162);
+        ctx.lineTo(26, -184);
+        ctx.lineTo(36, -152);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#a16207';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // Corner inner suit crest inside box
+      this.drawSuitSymbol(ctx, suit.id, -104, -188, 38, suitColor);
+      ctx.restore();
+    };
+
+    drawHalfBust(false);
+    drawHalfBust(true);
+
+    // Classic diagonal gold court divider bar
     ctx.save();
-    ctx.translate(cx, cy);
-
-    // Crown / Royal Hat
-    ctx.fillStyle = '#d4af37';
+    ctx.strokeStyle = '#c59b27';
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(-45, -110);
-    ctx.lineTo(45, -110);
-    ctx.lineTo(35, -70);
-    ctx.lineTo(-35, -70);
-    ctx.closePath();
-    ctx.fill();
-
-    // Crown points
-    ctx.beginPath();
-    ctx.moveTo(-45, -110);
-    ctx.lineTo(-30, -135);
-    ctx.lineTo(-15, -110);
-    ctx.lineTo(0, -145);
-    ctx.lineTo(15, -110);
-    ctx.lineTo(30, -135);
-    ctx.lineTo(45, -110);
-    ctx.fill();
-
-    // Royal Robe
-    ctx.fillStyle = suit.isRed ? '#b91c1c' : '#1e3a8a';
-    ctx.beginPath();
-    ctx.roundRect(-65, -60, 130, 170, [20, 20, 10, 10]);
-    ctx.fill();
-
-    // Collar / Gold sash
-    ctx.fillStyle = '#f59e0b';
-    ctx.beginPath();
-    ctx.moveTo(-65, -50);
-    ctx.lineTo(0, 30);
-    ctx.lineTo(65, -50);
-    ctx.lineTo(45, -50);
-    ctx.lineTo(0, 10);
-    ctx.lineTo(-45, -50);
-    ctx.closePath();
-    ctx.fill();
-
-    // Suit emblem in center chest
-    ctx.fillStyle = color;
-    ctx.font = '55px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(suit.symbol, 0, -10);
-
-    // Court Title (VALE, KIZ, PAPAZ)
-    ctx.font = 'bold 26px "Cinzel", "Georgia", serif';
-    ctx.fillStyle = '#d4af37';
-    ctx.fillText(card.court.toUpperCase(), 0, 75);
-
+    ctx.moveTo(left + 8, cy);
+    ctx.lineTo(left + boxW - 8, cy);
+    ctx.stroke();
     ctx.restore();
   }
 
   drawNumberPips(ctx, card, cx, cy, color, suit) {
     const count = parseInt(card.rank, 10);
-    const pipSize = count > 8 ? 54 : 64;
-    ctx.fillStyle = color;
-    ctx.font = `${pipSize}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Pip layouts for 2 to 10
-    const wSpan = 110;
-    const hSpan = 240;
+    const pipSize = count >= 9 ? 54 : 62;
+    const wSpan = 128;
+    const hSpan = 266;
 
     const positions = {
       2: [[0, -hSpan / 2], [0, hSpan / 2]],
@@ -339,74 +498,159 @@ class CardTextureGenerator {
       7: [[-wSpan / 2, -hSpan / 2], [wSpan / 2, -hSpan / 2], [0, -hSpan / 4], [-wSpan / 2, 0], [wSpan / 2, 0], [-wSpan / 2, hSpan / 2], [wSpan / 2, hSpan / 2]],
       8: [[-wSpan / 2, -hSpan / 2], [wSpan / 2, -hSpan / 2], [0, -hSpan / 4], [-wSpan / 2, 0], [wSpan / 2, 0], [0, hSpan / 4], [-wSpan / 2, hSpan / 2], [wSpan / 2, hSpan / 2]],
       9: [[-wSpan / 2, -hSpan / 2], [wSpan / 2, -hSpan / 2], [-wSpan / 2, -hSpan / 6], [wSpan / 2, -hSpan / 6], [0, 0], [-wSpan / 2, hSpan / 6], [wSpan / 2, hSpan / 6], [-wSpan / 2, hSpan / 2], [wSpan / 2, hSpan / 2]],
-      10: [[-wSpan / 2, -hSpan / 2], [wSpan / 2, -hSpan / 2], [0, -hSpan / 3], [-wSpan / 2, -hSpan / 6], [wSpan / 2, -hSpan / 6], [-wSpan / 2, hSpan / 6], [wSpan / 2, hSpan / 6], [0, hSpan / 3], [-wSpan / 2, hSpan / 2], [wSpan / 2, hSpan / 2]]
+      10: [[-wSpan / 2, -hSpan / 2], [wSpan / 2, -hSpan / 2], [0, -hSpan / 3], [-wSpan / 2, -hSpan / 6], [wSpan / 2, -hSpan / 6], [-wSpan / 2, hSpan / 6], [wSpan / 2, hSpan / 6], [0, hSpan / 3], [-wSpan / 2, hSpan / 2], [wSpan / 2, hSpan / 2]],
     };
 
     const pts = positions[count] || [[0, 0]];
     pts.forEach(([px, py]) => {
-      ctx.fillText(suit.symbol, cx + px, cy + py);
+      ctx.save();
+      ctx.translate(cx + px, cy + py);
+      if (py > 0) ctx.rotate(Math.PI);
+      this.drawSuitSymbol(ctx, suit.id, 0, 0, pipSize, color);
+      ctx.restore();
     });
   }
 }
 
 export const cardTexGen = new CardTextureGenerator();
 
-// 3D Physical Card Mesh Generator
-export function createCard3DMesh(cardData, isRecommended = false) {
-  // Enhanced playing card dimensions for VR headset legibility: ~8.8cm x ~12.6cm
-  const width = 0.088;
-  const height = 0.126;
-  const depth = 0.0014;
+// Genuine Rounded-Corner 3D Playing Card Geometry (3 Material Groups: Front, Back, Paper Edge)
+let SHARED_CARD_GEO = null;
+export function getSharedCardGeometry() {
+  if (SHARED_CARD_GEO) return SHARED_CARD_GEO;
 
-  // Box geometry for card with bevel thickness
-  const geometry = new THREE.BoxGeometry(width, height, depth);
+  const w = 0.092;
+  const h = 0.132;
+  const r = 0.0072;
+  const thickness = 0.0014;
+  const hw = w / 2;
+  const hh = h / 2;
 
-  const frontTexture = cardTexGen.getFrontTexture(cardData);
-  const backTexture = cardTexGen.getBackTexture();
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw + r, -hh);
+  shape.lineTo(hw - r, -hh);
+  shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+  shape.lineTo(hw, hh - r);
+  shape.quadraticCurveTo(hw, hh, hw - r, hh);
+  shape.lineTo(-hw + r, hh);
+  shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+  shape.lineTo(-hw, -hh + r);
+  shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
 
-  let edgeColor = 0xf1f5f9;
-  let emissiveColor = 0x000000;
-  let emissiveIntensity = 0;
+  const rawGeo = new THREE.ExtrudeGeometry(shape, {
+    depth: thickness,
+    bevelEnabled: false,
+    curveSegments: 8,
+  });
+  rawGeo.translate(0, 0, -thickness / 2);
 
-  if (isRecommended) {
-    edgeColor = 0xfbbf24;
-    emissiveColor = 0xd97706;
-    emissiveIntensity = 0.8;
+  const nonIndexed = rawGeo.index ? rawGeo.toNonIndexed() : rawGeo;
+  const posAttr = nonIndexed.getAttribute('position');
+  const vertCount = posAttr.count;
+
+  const frontPos = [];
+  const frontUv = [];
+  const backPos = [];
+  const backUv = [];
+  const edgePos = [];
+  const edgeUv = [];
+
+  for (let i = 0; i < vertCount; i += 3) {
+    const x0 = posAttr.getX(i), y0 = posAttr.getY(i), z0 = posAttr.getZ(i);
+    const x1 = posAttr.getX(i + 1), y1 = posAttr.getY(i + 1), z1 = posAttr.getZ(i + 1);
+    const x2 = posAttr.getX(i + 2), y2 = posAttr.getY(i + 2), z2 = posAttr.getZ(i + 2);
+
+    const ax = x1 - x0, ay = y1 - y0, az = z1 - z0;
+    const bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
+    const fnz = ax * by - ay * bx;
+    const fnx = ay * bz - az * by;
+    const fny = az * bx - ax * bz;
+    const len = Math.hypot(fnx, fny, fnz) || 1;
+    const nz = fnz / len;
+
+    if (nz > 0.5) {
+      frontPos.push(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+      frontUv.push(
+        (x0 + hw) / w, (y0 + hh) / h,
+        (x1 + hw) / w, (y1 + hh) / h,
+        (x2 + hw) / w, (y2 + hh) / h
+      );
+    } else if (nz < -0.5) {
+      backPos.push(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+      backUv.push(
+        1 - (x0 + hw) / w, (y0 + hh) / h,
+        1 - (x1 + hw) / w, (y1 + hh) / h,
+        1 - (x2 + hw) / w, (y2 + hh) / h
+      );
+    } else {
+      edgePos.push(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+      edgeUv.push(0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
+    }
   }
 
-  const edgeMaterial = new THREE.MeshStandardMaterial({
-    color: edgeColor,
-    emissive: emissiveColor,
-    emissiveIntensity: emissiveIntensity,
-    roughness: 0.7,
-    metalness: 0.05
-  });
+  const allPos = new Float32Array([...frontPos, ...backPos, ...edgePos]);
+  const allUv = new Float32Array([...frontUv, ...backUv, ...edgeUv]);
 
-  const frontMaterial = new THREE.MeshStandardMaterial({
-    map: frontTexture,
-    roughness: 0.35,
-    metalness: 0.08,
-    bumpScale: 0.0002
-  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(allPos, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(allUv, 2));
+  geo.computeVertexNormals();
 
-  const backMaterial = new THREE.MeshStandardMaterial({
-    map: backTexture,
-    roughness: 0.35,
-    metalness: 0.15
-  });
+  const frontCount = frontPos.length / 3;
+  const backCount = backPos.length / 3;
+  const edgeCount = edgePos.length / 3;
 
-  // Box faces: [right, left, top, bottom, front (+Z), back (-Z)]
-  const materials = [
-    edgeMaterial,
-    edgeMaterial,
-    edgeMaterial,
-    edgeMaterial,
-    frontMaterial,
-    backMaterial
-  ];
+  geo.addGroup(0, frontCount, 0);
+  geo.addGroup(frontCount, backCount, 1);
+  geo.addGroup(frontCount + backCount, edgeCount, 2);
 
-  const mesh = new THREE.Mesh(geometry, materials);
-  mesh.castShadow = true;
+  rawGeo.dispose();
+  if (nonIndexed !== rawGeo) nonIndexed.dispose();
+
+  SHARED_CARD_GEO = geo;
+  return SHARED_CARD_GEO;
+}
+
+const SHARED_EDGE_DEFAULT = new THREE.MeshStandardMaterial({ color: 0xe7e1d6, roughness: 0.72, metalness: 0.02 });
+const SHARED_EDGE_REC = new THREE.MeshStandardMaterial({
+  color: 0xfbbf24,
+  emissive: 0xd97706,
+  emissiveIntensity: 0.75,
+  roughness: 0.42,
+});
+let SHARED_BACK_MAT = null;
+const CARD_FRONT_MAT_CACHE = new Map();
+
+function getCardMaterials(cardData, isRecommended = false, isDimmed = false) {
+  if (!SHARED_BACK_MAT) {
+    SHARED_BACK_MAT = new THREE.MeshStandardMaterial({
+      map: cardTexGen.getBackTexture(),
+      roughness: 0.34,
+      metalness: 0.06,
+    });
+  }
+
+  const key = `${cardData.rank}_${cardData.suit}_${isDimmed ? 'dim' : 'lit'}`;
+  let frontMat = CARD_FRONT_MAT_CACHE.get(key);
+  if (!frontMat) {
+    frontMat = new THREE.MeshStandardMaterial({
+      map: cardTexGen.getFrontTexture(cardData),
+      color: isDimmed ? 0xbcc4d0 : 0xffffff,
+      roughness: 0.34,
+      metalness: 0.04,
+    });
+    CARD_FRONT_MAT_CACHE.set(key, frontMat);
+  }
+
+  const edgeMat = isRecommended ? SHARED_EDGE_REC : SHARED_EDGE_DEFAULT;
+  return [frontMat, SHARED_BACK_MAT, edgeMat];
+}
+
+// 3D Physical Rounded Playing Card Mesh Generator
+export function createCard3DMesh(cardData, isRecommended = false, isDimmed = false) {
+  const materials = getCardMaterials(cardData, isRecommended, isDimmed);
+  const mesh = new THREE.Mesh(getSharedCardGeometry(), materials);
+  mesh.castShadow = false;
   mesh.receiveShadow = true;
   mesh.userData = {
     card: cardData,
@@ -419,7 +663,7 @@ export function createCard3DMesh(cardData, isRecommended = false) {
     targetScale: new THREE.Vector3(1, 1, 1),
     isHovered: false,
     isSelected: false,
-    faceUp: true
+    faceUp: true,
   };
 
   return mesh;
