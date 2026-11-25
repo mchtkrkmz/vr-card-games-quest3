@@ -1310,16 +1310,19 @@ class AppManager {
 
   updateServerStatusBadge(errorHint = null) {
     if (!this.dom.mpServerStatus) return;
-    if (networkManager.serverStatus === 'connected') {
+    if (networkManager.serverStatus === 'connected' && networkManager.transportMode === 'p2p') {
+      this.dom.mpServerStatus.textContent = '🟢 Bulut P2P Bağlı (Mobil & Quest 3 Sunucusuz Oda Hazır)';
+      this.dom.mpServerStatus.style.color = '#4ade80';
+    } else if (networkManager.serverStatus === 'connected') {
       this.dom.mpServerStatus.textContent = `🟢 Sunucu Bağlı (${networkManager.clientId})`;
       this.dom.mpServerStatus.style.color = '#4ade80';
     } else if (networkManager.serverStatus === 'connecting') {
-      this.dom.mpServerStatus.textContent = '🟡 Sunucuya bağlanılıyor...';
+      this.dom.mpServerStatus.textContent = '🟡 Bağlanılıyor...';
       this.dom.mpServerStatus.style.color = '#facc15';
     } else {
       this.dom.mpServerStatus.textContent = errorHint
         ? `🔴 Bağlantı Yok (${errorHint})`
-        : '🔴 Sunucu Bağlı Değil (npm run start ile sunucuyu açın)';
+        : '🔴 Özel Sunucuya Ulaşılamadı (Boş bırakıp Bağlan derseniz Bulut P2P açılır)';
       this.dom.mpServerStatus.style.color = '#f87171';
     }
   }
@@ -1328,8 +1331,13 @@ class AppManager {
     if (!this.dom.mpPublicRoomsList) return;
     const rooms = networkManager.publicRooms || [];
     if (rooms.length === 0) {
-      this.dom.mpPublicRoomsList.innerHTML =
-        '<div style="color:#94a3b8; font-size:0.82rem; padding:8px;">Şu anda açık masa yok. Oda Kur sekmesinden yeni masa açabilirsiniz.</div>';
+      if (networkManager.transportMode === 'p2p') {
+        this.dom.mpPublicRoomsList.innerHTML =
+          '<div style="color:#93c5fd; font-size:0.82rem; padding:8px; line-height:1.45;">🌐 <strong>Bulut P2P Modu Aktif:</strong> Ek sunucu gerekmeden <strong>Oda Kur</strong> sekmesinden 4 haneli kod oluşturup arkadaşınıza verebilir veya size verilen kodu aşağıya yazarak Mobil / Quest 3\'ten katılabilirsiniz.</div>';
+      } else {
+        this.dom.mpPublicRoomsList.innerHTML =
+          '<div style="color:#94a3b8; font-size:0.82rem; padding:8px;">Şu anda açık masa yok. Oda Kur sekmesinden yeni masa açabilirsiniz.</div>';
+      }
       return;
     }
 

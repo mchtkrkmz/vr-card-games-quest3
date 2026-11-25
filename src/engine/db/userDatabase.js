@@ -78,27 +78,64 @@ export class UserDatabaseEngine {
     return Math.abs(hash).toString(16);
   }
 
+  _resolveApiUrl(pathUrl) {
+    const customUrl =
+      typeof localStorage !== 'undefined' ? (localStorage.getItem('vr52_server_url') || '').trim() : '';
+    if (customUrl) {
+      let origin = customUrl;
+      if (origin.startsWith('ws://')) origin = 'http://' + origin.slice(7);
+      else if (origin.startsWith('wss://')) origin = 'https://' + origin.slice(8);
+      else if (!origin.startsWith('http://') && !origin.startsWith('https://')) origin = 'https://' + origin;
+      origin = origin.replace(/\/ws\/?$/i, '').replace(/\/+$/, '');
+      return `${origin}${pathUrl}`;
+    }
+    if (typeof window !== 'undefined' && window.location) {
+      const { protocol, hostname } = window.location;
+      if (
+        protocol === 'file:' ||
+        /(\.github\.io|\.netlify\.app|\.vercel\.app|\.pages\.dev)$/i.test(hostname || '')
+      ) {
+        const err = new Error('STATIC_HOST_OFFLINE_AUTH');
+        err.isNetwork = true;
+        throw err;
+      }
+    }
+    return pathUrl;
+  }
+
   async _apiRequest(pathUrl, options = {}) {
     if (typeof fetch === 'undefined') {
       const err = new Error('NO_FETCH');
       err.isNetwork = true;
       throw err;
     }
+    const targetUrl = this._resolveApiUrl(pathUrl);
     try {
       const headers = { ...(options.headers || {}) };
       if (options.body && !headers['Content-Type']) {
         headers['Content-Type'] = 'application/json';
       }
-      const resp = await fetch(pathUrl, { ...options, headers });
-      const data = await resp.json().catch(() => ({}));
+      const resp = await fetch(targetUrl, { ...options, headers });
+      const contentType = resp.headers?.get?.('content-type') || '';
+      const data = contentType.includes('application/json') ? await resp.json().catch(() => ({})) : {};
       if (!resp.ok) {
         const err = new Error(data.error || `HTTP ${resp.status}`);
         err.status = resp.status;
+        if (
+          resp.status === 404 ||
+          resp.status === 405 ||
+          resp.status === 501 ||
+          resp.status === 502 ||
+          resp.status === 503 ||
+          !contentType.includes('application/json')
+        ) {
+          err.isNetwork = true;
+        }
         throw err;
       }
       return data;
     } catch (err) {
-      if (typeof err.status === 'number') throw err;
+      if (typeof err.status === 'number' && !err.isNetwork) throw err;
       err.isNetwork = true;
       throw err;
     }
