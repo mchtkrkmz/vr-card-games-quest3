@@ -569,11 +569,32 @@ const SHARED_TILE_SIDE_REC = new THREE.MeshStandardMaterial({
   emissiveIntensity: 0.65,
   roughness: 0.22,
 });
+const SHARED_TILE_SIDE_PENALTY = new THREE.MeshStandardMaterial({
+  color: 0xef4444,
+  emissive: 0xdc2626,
+  emissiveIntensity: 0.78,
+  roughness: 0.2,
+});
+const SHARED_TILE_SIDE_MELD = new THREE.MeshStandardMaterial({
+  color: 0x10b981,
+  emissive: 0x059669,
+  emissiveIntensity: 0.78,
+  roughness: 0.2,
+});
+const SHARED_TILE_SIDE_PER = new THREE.MeshStandardMaterial({
+  color: 0x38bdf8,
+  emissive: 0x0284c7,
+  emissiveIntensity: 0.45,
+  roughness: 0.22,
+});
+const SHARED_TILE_CAP_GEO = new THREE.BoxGeometry(0.030, 0.0032, 0.0115);
+const SHARED_TILE_CAP_PENALTY = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+const SHARED_TILE_CAP_MELD = new THREE.MeshBasicMaterial({ color: 0x10b981 });
 
 let SHARED_TILE_BACK_MAT = null;
 const TILE_FRONT_MAT_CACHE = new Map();
 
-function getTileMaterials(tileData, isSelected, isRecommended) {
+function getTileMaterials(tileData, isSelected, isRecommended, highlightType = null) {
   if (!SHARED_TILE_BACK_MAT) {
     SHARED_TILE_BACK_MAT = new THREE.MeshStandardMaterial({
       map: okeyTexGen.getTileBackTexture(),
@@ -600,24 +621,37 @@ function getTileMaterials(tileData, isSelected, isRecommended) {
 
   let sideMat = SHARED_TILE_SIDE_DEFAULT;
   if (isSelected) sideMat = SHARED_TILE_SIDE_SELECTED;
+  else if (highlightType === 'penalty') sideMat = SHARED_TILE_SIDE_PENALTY;
+  else if (highlightType === 'meld') sideMat = SHARED_TILE_SIDE_MELD;
   else if (tileData.isRealOkey) sideMat = SHARED_TILE_SIDE_OKEY;
   else if (isRecommended) sideMat = SHARED_TILE_SIDE_REC;
+  else if (highlightType === 'per') sideMat = SHARED_TILE_SIDE_PER;
 
   // Material groups: [0 = Front Face, 1 = Rounded Bevel Sides, 2 = Back Face]
   return [frontMat, sideMat, SHARED_TILE_BACK_MAT];
 }
 
 // 3D Realistic Beveled Melamine Tile Mesh
-export function createOkeyTile3DMesh(tileData, isSelected = false, isRecommended = false) {
-  const materials = getTileMaterials(tileData, isSelected, isRecommended);
+export function createOkeyTile3DMesh(tileData, isSelected = false, isRecommended = false, highlightType = null) {
+  const materials = getTileMaterials(tileData, isSelected, isRecommended, highlightType);
   const mesh = new THREE.Mesh(getSharedTileGeometry(), materials);
   mesh.castShadow = false;
   mesh.receiveShadow = true;
+
+  if (highlightType === 'penalty' || highlightType === 'meld') {
+    const capMat = highlightType === 'penalty' ? SHARED_TILE_CAP_PENALTY : SHARED_TILE_CAP_MELD;
+    const capMesh = new THREE.Mesh(SHARED_TILE_CAP_GEO, capMat);
+    capMesh.position.set(0, 0.0245, 0.001);
+    capMesh.userData.isHighlightCap = true;
+    mesh.add(capMesh);
+  }
+
   mesh.userData = {
     tile: tileData,
     isOkeyTile: true,
     isSelected,
     isRecommended,
+    highlightType,
     originalY: 0,
     rackSlot: null,
     tier: 0,

@@ -3501,7 +3501,7 @@ export class VRCardScene {
   }
 
   // --- OKEY TILES & 101 PERS RENDERING ---
-  renderPlayerIstaka(handTiles, recommendedIndex = -1, allowAutoSort = false) {
+  renderPlayerIstaka(handTiles, recommendedIndex = -1, allowAutoSort = false, tileHighlights = null) {
     while (this.playerIstakaGroup.children.length > 2) {
       this.playerIstakaGroup.remove(this.playerIstakaGroup.children[2]);
     }
@@ -3518,7 +3518,11 @@ export class VRCardScene {
     handTiles.forEach((tile, idx) => {
       const isSelected = this.selectedTileIndex === idx;
       const isRecommended = recommendedIndex === idx;
-      const mesh = createOkeyTile3DMesh(tile, isSelected, isRecommended);
+      let highlightType = null;
+      if (tileHighlights?.penaltyIds?.has(tile.id)) highlightType = 'penalty';
+      else if (tileHighlights?.meldIds?.has(tile.id)) highlightType = 'meld';
+      else if (tileHighlights?.perIds?.has(tile.id)) highlightType = 'per';
+      const mesh = createOkeyTile3DMesh(tile, isSelected, isRecommended, highlightType);
 
       const tier = tile._istakaTier === 0 ? 0 : 1;
       const slot = typeof tile._istakaSlot === 'number'

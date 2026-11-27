@@ -350,6 +350,17 @@ export class Okey101GameEngine {
     return pers;
   }
 
+  findPerTileIds(playerIndex) {
+    const player = this.players[playerIndex];
+    const ids = new Set();
+    if (!player || !Array.isArray(player.hand)) return ids;
+    const pers = this.findBestPersInHand(player.hand);
+    pers.forEach((per) => {
+      per.tiles.forEach((t) => ids.add(t.id));
+    });
+    return ids;
+  }
+
   canMeldTileToPer(tile, per) {
     if (!tile || !per || !Array.isArray(per.tiles) || per.tiles.length === 0) {
       return { ok: false };

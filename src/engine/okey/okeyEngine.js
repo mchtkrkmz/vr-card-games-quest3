@@ -255,6 +255,11 @@ export class OkeyGameEngine {
     const tileIdx = player.hand.findIndex(t => t.id === tileId);
     if (tileIdx === -1) return false;
 
+    const candidateTile = player.hand[tileIdx];
+    const penaltyInfo = isWinningDiscard
+      ? { willPenalize: false, penaltyPoints: 0, reason: null }
+      : this.getDiscardPenaltyInfo(playerIndex, candidateTile);
+
     const tile = player.hand.splice(tileIdx, 1)[0];
     this.discardPiles[playerIndex].push(tile);
     this.lastDiscardedTile = tile;
@@ -268,6 +273,17 @@ export class OkeyGameEngine {
       this.log(`🎉 ${player.name} ${isOkeyFinish ? '🌟 OKEY İLE BİTTİ (Çift Ceza)!' : 'ELİ BİTİRDİ!'}`);
       this.endRound(player, isOkeyFinish);
       return true;
+    }
+
+    if (penaltyInfo.willPenalize) {
+      player.score = Math.min(40, (player.score || 0) + penaltyInfo.penaltyPoints);
+      this.log(`🚨 CEZA (+${penaltyInfo.penaltyPoints} Puan): ${player.name} — ${penaltyInfo.reason}`);
+      this.emit('penalty_incurred', {
+        playerIndex,
+        points: penaltyInfo.penaltyPoints,
+        reason: penaltyInfo.reason,
+        tile
+      });
     }
 
     this.emit('tile_discarded', {
@@ -526,6 +542,101 @@ export class OkeyGameEngine {
     });
 
     return worstTile;
+  }
+
+  findPerTileIds(playerIndex) {
+    const player = this.players[playerIndex];
+    const ids = new Set();
+    if (!player || !Array.isArray(player.hand)) return ids;
+
+    const resolveId = (t) => {
+      if (t.isFakeOkey) {
+        return {
+          colorKey: t.virtualColorKey || this.okeyTileInfo?.colorKey || '',
+          number: Number(t.virtualNumber || this.okeyTileInfo?.number || 0),
+        };
+      }
+      return { colorKey: t.colorKey || '', number: Number(t.number || 0) };
+    };
+
+    const colorGroups = { RED: [], BLACK: [], BLUE: [], YELLOW: [] };
+    player.hand.forEach((t) => {
+      if (t.isRealOkey) return;
+      const id = resolveId(t);
+      if (colorGroups[id.colorKey] && id.number > 0) {
+        colorGroups[id.colorKey].push({ tile: t, num: id.number });
+      }
+    });
+
+    for (const color in colorGroups) {
+      const sorted = [...colorGroups[color]].sort((a, b) => a.num - b.num);
+      let run = [];
+      for (const item of sorted) {
+        if (ids.has(item.tile.id)) continue;
+        if (run.length === 0) {
+          run.push(item);
+        } else if (item.num === run[run.length - 1].num + 1) {
+          run.push(item);
+        } else if (item.num !== run[run.length - 1].num) {
+          if (run.length >= 3) run.forEach((x) => ids.add(x.tile.id));
+          run = [item];
+        }
+      }
+      if (run.length >= 3) run.forEach((x) => ids.add(x.tile.id));
+    }
+
+    const numGroups = {};
+    player.hand.forEach((t) => {
+      if (t.isRealOkey || ids.has(t.id)) return;
+      const id = resolveId(t);
+      if (id.number > 0 && id.colorKey) {
+        if (!numGroups[id.number]) numGroups[id.number] = [];
+        if (!numGroups[id.number].some((x) => resolveId(x).colorKey === id.colorKey)) {
+          numGroups[id.number].push(t);
+        }
+      }
+    });
+    for (const num in numGroups) {
+      if (numGroups[num].length >= 3) {
+        numGroups[num].forEach((t) => ids.add(t.id));
+      }
+    }
+
+    return ids;
+  }
+
+  findWinningDiscardTiles(playerIndex) {
+    const player = this.players[playerIndex];
+    if (!player || !Array.isArray(player.hand) || player.hand.length !== 15) return [];
+    const winners = [];
+    for (let i = 0; i < player.hand.length; i++) {
+      const remaining = player.hand.filter((_, idx) => idx !== i);
+      if (this.checkIfHandWins(remaining)) {
+        winners.push(player.hand[i]);
+      }
+    }
+    return winners;
+  }
+
+  getDiscardPenaltyInfo(playerIndex, tile) {
+    const player = this.players[playerIndex];
+    if (!player || !tile) {
+      return { willPenalize: false, penaltyPoints: 0, reason: null };
+    }
+    if (tile.isRealOkey) {
+      if (player.hand.length === 15) {
+        const remaining = player.hand.filter((x) => x.id !== tile.id);
+        if (this.checkIfHandWins(remaining)) {
+          return { willPenalize: false, penaltyPoints: 0, reason: null, isWinningOkey: true };
+        }
+      }
+      return {
+        willPenalize: true,
+        penaltyPoints: 2,
+        reason: 'Gerçek Okey taşını bitmeden yere atmak +2 ceza puanı verir!'
+      };
+    }
+    return { willPenalize: false, penaltyPoints: 0, reason: null };
   }
 
   endRound(winner, isOkeyFinish) {
