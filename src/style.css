@@ -1851,6 +1851,50 @@ body, html {
     box-shadow: 0 0 0 1.5px rgba(245, 158, 11, 0.65), 0 3px 8px rgba(245, 158, 11, 0.3);
   }
 
+  .m-tile.meldable {
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.72), 0 4px 10px rgba(16, 185, 129, 0.35);
+  }
+
+  .m-tile.penalty-warn {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.68), 0 4px 10px rgba(239, 68, 68, 0.3);
+  }
+
+  .m-tile-meld-badge {
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #10b981;
+    color: #022c22;
+    font-size: 0.46rem;
+    font-weight: 900;
+    padding: 0 4px;
+    border-radius: 99px;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+
+  .m-tile-penalty-badge {
+    position: absolute;
+    top: -6px;
+    left: -3px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 0.46rem;
+    font-weight: 900;
+    padding: 1px 4px;
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+
+  .m-toolbar-btn.danger {
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    border-color: #fca5a5;
+    color: #ffffff;
+  }
+
   .m-tile-okey-badge {
     position: absolute;
     top: -5px;
@@ -1932,5 +1976,131 @@ body, html {
   .m-slot-empty {
     width: 30px;
     height: 44px;
+  }
+}
+
+/* ============================================================
+   LIVE PLAYED CARDS / OPPONENT MOVES BANNER (#played-cards-feed)
+   ============================================================ */
+.played-cards-feed {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 14px;
+  max-width: min(860px, calc(100vw - 24px));
+  background: rgba(10, 15, 29, 0.90);
+  border: 1.5px solid rgba(212, 175, 55, 0.55);
+  border-radius: 16px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.played-feed-title {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #fde68a;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.played-card-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  padding: 3px 8px 3px 9px;
+  white-space: nowrap;
+}
+
+.played-card-chip.latest {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 1.5px rgba(251, 191, 36, 0.45);
+}
+
+.played-chip-player {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.played-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(165deg, #ffffff 0%, #f8f3e8 100%);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 0.84rem;
+  font-weight: 900;
+  box-shadow: inset 0 1px 0 #ffffff, 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.played-chip-badge.red {
+  color: #dc2626;
+}
+
+.played-chip-badge.black {
+  color: #0f172a;
+}
+
+.played-chip-badge.blue {
+  color: #1d4ed8;
+}
+
+.played-chip-badge.gold {
+  color: #b45309;
+}
+
+.played-chip-svg {
+  width: 13px;
+  height: 13px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@media (max-width: 960px), (max-height: 540px) {
+  .played-cards-feed {
+    top: max(52px, calc(env(safe-area-inset-top) + 46px));
+    padding: 4px 8px;
+    gap: 5px;
+    border-radius: 12px;
+    max-width: calc(100vw - 12px);
+  }
+
+  .played-feed-title {
+    font-size: 0.68rem;
+  }
+
+  .played-card-chip {
+    padding: 2px 6px;
+    gap: 4px;
+    border-radius: 8px;
+  }
+
+  .played-chip-player {
+    font-size: 0.71rem;
+  }
+
+  .played-chip-badge {
+    font-size: 0.76rem;
+    padding: 1px 5px;
+  }
+
+  .played-chip-svg {
+    width: 11px;
+    height: 11px;
   }
 }

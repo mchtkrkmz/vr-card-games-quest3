@@ -171,6 +171,10 @@ class AppManager {
       lobbyPlayersGrid: document.getElementById('lobby-players-grid'),
       btnLobbyStartGame: document.getElementById('btn-lobby-start-game'),
       btnLobbyLeave: document.getElementById('btn-lobby-leave'),
+      btnLobbyMic: document.getElementById('btn-lobby-mic'),
+      lobbyMicIcon: document.getElementById('lobby-mic-icon'),
+      lobbyMicLabel: document.getElementById('lobby-mic-label'),
+      playedCardsFeed: document.getElementById('played-cards-feed'),
 
       // Voice & PWA Controls
       btnVoice: document.getElementById('btn-voice'),
@@ -387,8 +391,43 @@ class AppManager {
           }
         } else if (isMyTurn && this.gameEngine.turnPhase === 'DISCARD') {
           const selTile = this.selectedTileIndex >= 0 ? hand[this.selectedTileIndex] : null;
+          const meldables =
+            this.currentGameType === 'OKEY101' && myPlayer?.hasOpened && this.gameEngine.findMeldableTiles
+              ? this.gameEngine.findMeldableTiles(mySeat)
+              : [];
+          const meldSet = new Set(meldables.map((m) => m.tile.id));
+          if (this.currentGameType === 'OKEY101' && meldables.length > 0) {
+            if (selTile && meldSet.has(selTile.id)) {
+              addToolBtn(`✨ İşle (${selTile.isFakeOkey ? 'Sahte' : selTile.number})`, 'primary', () =>
+                this.dispatchOkey101Meld(selTile.id)
+              );
+            } else {
+              addToolBtn(`✨ İşle (${meldables.length})`, 'primary', () => this.dispatchOkey101Meld(null));
+            }
+          }
           if (selTile) {
-            addToolBtn(`🗑️ At (${selTile.isFakeOkey ? 'Sahte' : selTile.number})`, 'warn', () => this.dispatchOkeyDiscard(selTile.id));
+            const penInfo =
+              this.currentGameType === 'OKEY101' && this.gameEngine.getDiscardPenaltyInfo
+                ? this.gameEngine.getDiscardPenaltyInfo(mySeat, selTile)
+                : { willPenalize: false };
+            if (penInfo.willPenalize) {
+              addToolBtn(
+                `🚨 At (+101 CEZA)`,
+                'danger',
+                () => this.dispatchOkeyDiscard(selTile.id)
+              );
+              const warnPill = document.createElement('span');
+              warnPill.className = 'm-toolbar-pill';
+              warnPill.style.background = 'rgba(220, 38, 38, 0.25)';
+              warnPill.style.borderColor = 'rgba(248, 113, 113, 0.7)';
+              warnPill.style.color = '#fecaca';
+              warnPill.textContent = `⚠️ İşlek/Okey Ceza Riski (+${penInfo.penaltyPoints})`;
+              toolbar.appendChild(warnPill);
+            } else {
+              addToolBtn(`🗑️ At (${selTile.isFakeOkey ? 'Sahte' : selTile.number})`, 'warn', () =>
+                this.dispatchOkeyDiscard(selTile.id)
+              );
+            }
           }
           if (this.currentGameType === 'OKEY101' && myPlayer && !myPlayer.hasOpened && this.gameEngine.calculateHandPerPoints) {
             const pts = this.gameEngine.calculateHandPerPoints(myPlayer)?.totalPoints || 0;
@@ -540,6 +579,21 @@ class AppManager {
       };
 
       const rowEls = [this.dom.mobileIstakaRow0, this.dom.mobileIstakaRow1];
+      const meldableIds = new Set(
+        this.currentGameType === 'OKEY101' &&
+          myPlayer?.hasOpened &&
+          isMyTurn &&
+          this.gameEngine.turnPhase === 'DISCARD' &&
+          this.gameEngine.findMeldableTiles
+          ? this.gameEngine.findMeldableTiles(mySeat).map((m) => m.tile.id)
+          : []
+      );
+      const canWarnPenalty =
+        this.currentGameType === 'OKEY101' &&
+        isMyTurn &&
+        this.gameEngine.turnPhase === 'DISCARD' &&
+        Boolean(this.gameEngine.getDiscardPenaltyInfo);
+
       rowEls.forEach((rowEl, tier) => {
         if (!rowEl) return;
         rowEl.innerHTML = '';
@@ -553,10 +607,21 @@ class AppManager {
             const isSelected = this.selectedTileIndex === idx;
             const isRec = recTileId === tile.id;
             const isRealOkey = Boolean(tile.isRealOkey);
-            tileBtn.className = `m-tile ${colorClassFor(tile)}${tile.isFakeOkey ? ' joker' : ''}${isRealOkey ? ' okey-wild' : ''}${isSelected ? ' selected' : ''}${isRec ? ' recommended' : ''}`;
-            tileBtn.setAttribute('aria-label', `${tile.colorName || ''} ${tile.isFakeOkey ? 'Sahte Okey' : tile.number}`);
+            const isMeldable = meldableIds.has(tile.id);
+            const penInfo = canWarnPenalty
+              ? this.gameEngine.getDiscardPenaltyInfo(mySeat, tile)
+              : { willPenalize: false };
+            const isPenaltyWarn = Boolean(penInfo?.willPenalize);
+
+            tileBtn.className = `m-tile ${colorClassFor(tile)}${tile.isFakeOkey ? ' joker' : ''}${isRealOkey ? ' okey-wild' : ''}${isMeldable ? ' meldable' : ''}${isPenaltyWarn ? ' penalty-warn' : ''}${isSelected ? ' selected' : ''}${isRec ? ' recommended' : ''}`;
+            tileBtn.setAttribute(
+              'aria-label',
+              `${tile.colorName || ''} ${tile.isFakeOkey ? 'Sahte Okey' : tile.number}${isMeldable ? ' (İşlenebilir)' : ''}${isPenaltyWarn ? ' (Ceza Riski)' : ''}`
+            );
             tileBtn.innerHTML = `
               ${isRec ? '<span class="m-tile-ai-badge">AT</span>' : isRealOkey ? '<span class="m-tile-okey-badge">★</span>' : ''}
+              ${isPenaltyWarn ? '<span class="m-tile-penalty-badge">CEZA</span>' : ''}
+              ${isMeldable ? '<span class="m-tile-meld-badge">İŞLE</span>' : ''}
               <span class="m-tile-num">${tile.isFakeOkey ? '★' : tile.number}</span>
               <span class="m-tile-dot"></span>
             `;
@@ -658,6 +723,15 @@ class AppManager {
     }
     if (this.dom.voiceLabel) {
       this.dom.voiceLabel.textContent = !micActive ? 'Mikrofon' : micMuted ? 'Mik Kapalı' : 'Mik Açık';
+    }
+    if (this.dom.btnLobbyMic) {
+      this.dom.btnLobbyMic.classList.toggle('active', micActive && !micMuted);
+    }
+    if (this.dom.lobbyMicIcon) {
+      this.dom.lobbyMicIcon.textContent = !micActive ? '🎙️' : micMuted ? '🔇' : '🎤';
+    }
+    if (this.dom.lobbyMicLabel) {
+      this.dom.lobbyMicLabel.textContent = !micActive ? 'Mikrofonu Aç' : micMuted ? 'Mikrofon Kapalı' : 'Mikrofon Açık';
     }
 
     if (this.dom.soundIcon) {
@@ -1167,6 +1241,10 @@ class AppManager {
         });
         this.dom.multiplayerModal.classList.add('hidden');
         this.showLobbyModal();
+        spatialVoice.syncPeersWithRoom(networkManager.roomPlayers);
+        if (typeof window !== 'undefined' && window.isSecureContext && !spatialVoice.isVoiceActive) {
+          spatialVoice.initVoiceChat().then(() => this.syncAudioUI()).catch(() => {});
+        }
       } catch (err) {
         alert(`Oda oluşturulamadı: ${err.message}`);
       } finally {
@@ -1197,6 +1275,10 @@ class AppManager {
         });
         this.dom.multiplayerModal.classList.add('hidden');
         this.showLobbyModal();
+        spatialVoice.syncPeersWithRoom(networkManager.roomPlayers);
+        if (typeof window !== 'undefined' && window.isSecureContext && !spatialVoice.isVoiceActive) {
+          spatialVoice.initVoiceChat().then(() => this.syncAudioUI()).catch(() => {});
+        }
       } catch (err) {
         alert(`Odaya bağlanılamadı: ${err.message}`);
       } finally {
@@ -1224,7 +1306,8 @@ class AppManager {
       this.startActiveGameMode();
     });
 
-    // Lobby Leave
+    // Lobby Mic & Leave
+    this.dom.btnLobbyMic?.addEventListener('click', () => this.toggleMicrophone());
     this.dom.btnLobbyLeave?.addEventListener('click', () => {
       soundFx.playButtonClick();
       networkManager.leaveRoom();
@@ -1457,6 +1540,13 @@ class AppManager {
       case 'OPEN_101':
         this.gameEngine.openHand?.(seat);
         break;
+      case 'MELD_TILE':
+        if (payload.tileId) {
+          this.gameEngine.meldTile?.(seat, payload.tileId, payload.perIndex);
+        } else {
+          this.gameEngine.meldAllPossible?.(seat);
+        }
+        break;
     }
   }
 
@@ -1528,6 +1618,17 @@ class AppManager {
     spatialVoice.syncPeersWithRoom(networkManager.roomPlayers);
 
     // Trigger remote animations / sounds cleanly
+    if (evt?.type === 'deal_complete' || evt?.type === 'table_deal') {
+      this.clearPlayedFeed();
+      if (evt?.type === 'table_deal' && this.currentGameType === 'PISTI' && this.gameEngine.tableCards?.length > 0) {
+        const topTable = this.gameEngine.tableCards[this.gameEngine.tableCards.length - 1];
+        this.recordPlayedMove(0, topTable.card || topTable, 'card', 'Ortada');
+      }
+    } else if (evt?.type === 'card_played' && evt.card) {
+      this.recordPlayedMove(evt.playerIndex, evt.card, 'card');
+    } else if (evt?.type === 'tile_discarded' && evt.tile) {
+      this.recordPlayedMove(evt.playerIndex, evt.tile, 'tile');
+    }
     if (evt?.type === 'deal_complete') {
       soundFx.playCardShuffle();
       this.hideGameOverModal();
@@ -1538,8 +1639,14 @@ class AppManager {
       this.triggerVictoryCelebration(0.5);
     } else if (evt?.type === 'tile_drawn') {
       soundFx.playOkeyTileSlide();
-    } else if (evt?.type === 'hand_opened') {
-      soundFx.playTrumpFanfare();
+    } else if (evt?.type === 'hand_opened' || evt?.type === 'tile_melded') {
+      if (evt.type === 'hand_opened') soundFx.playTrumpFanfare();
+      else soundFx.playOkeyTileSlide();
+    } else if (evt?.type === 'penalty_incurred') {
+      soundFx.playButtonClick();
+      if (evt.playerIndex === this.getMySeat()) {
+        this.appendLog(`🚨 CEZA (+${evt.points} Puan): ${evt.reason}`);
+      }
     } else if (evt?.type === 'card_played' && evt.card) {
       const vSeat = this.toVisualSeat(evt.playerIndex);
       if (vSeat !== 0) {
@@ -1705,6 +1812,22 @@ class AppManager {
 
   dispatchOkeyDiscard(tileId) {
     const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+    const tileObj = myPlayer?.hand?.find((t) => t.id === tileId);
+    if (
+      this.currentGameType === 'OKEY101' &&
+      tileObj &&
+      this.gameEngine?.getDiscardPenaltyInfo &&
+      !this.scene?.isVRActive
+    ) {
+      const info = this.gameEngine.getDiscardPenaltyInfo(mySeat, tileObj);
+      if (info?.willPenalize) {
+        const proceed = confirm(
+          `⚠️ DİKKAT (+${info.penaltyPoints} CEZA): ${info.reason}\n\nYine de bu taşı atmak istiyor musunuz?`
+        );
+        if (!proceed) return;
+      }
+    }
     this.setSelectedTile(-1);
     if (this.isMultiplayerGuest()) {
       networkManager.sendPlayerAction('DISCARD_TILE', { tileId });
@@ -1720,6 +1843,20 @@ class AppManager {
       networkManager.sendPlayerAction('OPEN_101', {});
     } else {
       this.gameEngine?.openHand(mySeat);
+    }
+    this.hideActionPanel();
+  }
+
+  dispatchOkey101Meld(tileId = null, perIndex = null) {
+    if (this.currentGameType !== 'OKEY101' || !this.gameEngine) return;
+    const mySeat = this.getMySeat();
+    this.setSelectedTile(-1);
+    if (this.isMultiplayerGuest()) {
+      networkManager.sendPlayerAction('MELD_TILE', { tileId, perIndex });
+    } else if (tileId) {
+      this.gameEngine.meldTile?.(mySeat, tileId, perIndex);
+    } else {
+      this.gameEngine.meldAllPossible?.(mySeat);
     }
     this.hideActionPanel();
   }
@@ -1841,6 +1978,68 @@ class AppManager {
     this.hideActionPanel();
     if (this.scene) this.scene.resetSceneObjects();
     this.setSelectedTile(-1);
+    this.clearPlayedFeed();
+  }
+
+  // --- LIVE PLAYED CARDS / TILES FEED (Web, Mobile & VR HUD) ---
+  clearPlayedFeed() {
+    this.playedFeed = [];
+    this.renderPlayedCardsFeed();
+  }
+
+  recordPlayedMove(playerIndex, item, kind = 'card', overrideName = null) {
+    if (!item) return;
+    if (!Array.isArray(this.playedFeed)) this.playedFeed = [];
+    if (this.currentGameType === 'BATAK' && this.playedFeed.length >= 4) {
+      this.playedFeed = [];
+    }
+    const isMe = !overrideName && playerIndex === this.getMySeat();
+    const rawName = this.gameEngine?.players?.[playerIndex]?.name || `Oyuncu ${Number(playerIndex) + 1}`;
+    const name = overrideName || (isMe ? 'Siz' : String(rawName).replace(/\s*\(Bot\)/i, ''));
+
+    let label = '';
+    let colorCls = 'black';
+    let suitId = null;
+    if (kind === 'card') {
+      const meta = getCardMeta(item);
+      label = `${meta.suitName} ${meta.court || meta.rank}`;
+      colorCls = meta.isRed ? 'red' : 'black';
+      suitId = meta.suitId;
+    } else {
+      const key = String(item.colorKey || '').toUpperCase();
+      colorCls = key === 'RED' ? 'red' : key === 'BLUE' ? 'blue' : key === 'BLACK' ? 'black' : 'gold';
+      label = `${item.colorName || ''} ${item.isFakeOkey ? 'Sahte Okey' : item.number}`.trim();
+    }
+
+    this.playedFeed.push({ name, label, colorCls, suitId });
+    const maxItems = this.currentGameType === 'PISTI' ? 3 : 4;
+    while (this.playedFeed.length > maxItems) this.playedFeed.shift();
+    this.renderPlayedCardsFeed();
+  }
+
+  renderPlayedCardsFeed() {
+    const feed = this.dom.playedCardsFeed;
+    const items = Array.isArray(this.playedFeed) ? this.playedFeed : [];
+    const summary = items.map((m) => `${m.name}: ${m.label}`).join('  •  ');
+    if (this.scene?.setPlayedSummary) this.scene.setPlayedSummary(summary);
+    if (!feed) return;
+    if (items.length === 0) {
+      feed.style.display = 'none';
+      feed.innerHTML = '';
+      return;
+    }
+    const isOkey = this.currentGameType === 'OKEY' || this.currentGameType === 'OKEY101';
+    const title = isOkey ? 'Son Atılan Taşlar' : 'Son Atılan Kartlar';
+    feed.innerHTML =
+      `<span class="played-feed-title">${title}:</span>` +
+      items
+        .map((m, idx) => {
+          const svg = m.suitId ? getSuitSvg(m.suitId, 'played-chip-svg') : '';
+          const latest = idx === items.length - 1 ? ' latest' : '';
+          return `<span class="played-card-chip${latest}"><span class="played-chip-player">${m.name}</span><span class="played-chip-badge ${m.colorCls}">${svg}${m.label}</span></span>`;
+        })
+        .join('');
+    feed.style.display = 'flex';
   }
 
   // --- ADMIN / AUTHORIZED AI ADVISOR (Strictly mchtkrkmz@gmail.com or admin-granted member) ---
@@ -1999,6 +2198,7 @@ class AppManager {
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'deal_complete') {
+      this.clearPlayedFeed();
       const okey = data.okeyInfo;
       this.dom.hudTrump.innerHTML = `<span style="color:${okey.colorHex}">★ ${okey.colorName} ${okey.number}</span>`;
       this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
@@ -2039,7 +2239,29 @@ class AppManager {
       this.updateOkey101HUD(`${this.gameEngine.players[data.playerIndex]?.name} ELİNİ AÇTI (${data.totalPoints} Puan)!`);
       this.updateAIAdvisor();
       this.syncHostStateToGuests({ type: 'hand_opened', playerIndex: data.playerIndex });
+    } else if (event === 'tile_melded') {
+      soundFx.playOkeyTileSlide();
+      this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
+      this.scene.renderOpponentIstakas(this.toVisualArray(this.gameEngine.players));
+      this.scene.render101OpenedPers(this.gameEngine.tableOpenedPers);
+      this.updateOkey101HUD(`${this.gameEngine.players[data.playerIndex]?.name} pere taş işledi!`);
+      this.updateAIAdvisor();
+      this.syncHostStateToGuests({ type: 'tile_melded', playerIndex: data.playerIndex, tile: data.tile });
+    } else if (event === 'penalty_incurred') {
+      soundFx.playButtonClick();
+      this.updateOkey101HUD(`🚨 ${this.gameEngine.players[data.playerIndex]?.name}: +${data.points} Ceza!`);
+      if (data.playerIndex === mySeat && !this.scene?.isVRActive) {
+        this.appendLog(`🚨 CEZA (+${data.points} Puan): ${data.reason}`);
+      }
+      this.updateOkey101HUD();
+      this.syncHostStateToGuests({
+        type: 'penalty_incurred',
+        playerIndex: data.playerIndex,
+        points: data.points,
+        reason: data.reason,
+      });
     } else if (event === 'tile_discarded') {
+      this.recordPlayedMove(data.playerIndex, data.tile, 'tile');
       const vSeat = this.toVisualSeat(data.playerIndex, 4);
       this.scene.animateTileDiscard(data.tile, vSeat, () => this.renderOkeyDiscardsHelper());
       this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
@@ -2135,7 +2357,16 @@ class AppManager {
   }
 
   showOkey101DiscardUI(canOpen) {
-    this.dom.actionTitle.textContent = 'Istakadan Atılacak Taşı Seçin (veya sağdaki tepsiye sürükleyin):';
+    const mySeat = this.getMySeat();
+    const myPlayer = this.getMyPlayer();
+    const meldables =
+      myPlayer?.hasOpened && this.gameEngine?.findMeldableTiles
+        ? this.gameEngine.findMeldableTiles(mySeat)
+        : [];
+    this.dom.actionTitle.textContent =
+      meldables.length > 0
+        ? `Istakadan ${meldables.length} taş işlenebilir veya atılacak taşı seçin:`
+        : 'Istakadan Atılacak Taşı Seçin (veya sağdaki tepsiye sürükleyin):';
     this.dom.actionButtonsContainer.innerHTML = '';
 
     if (canOpen) {
@@ -2145,6 +2376,15 @@ class AppManager {
       openHandBtn.textContent = '🌟 Elini Aç (101)';
       openHandBtn.onclick = () => this.dispatchOkey101Open();
       this.dom.actionButtonsContainer.appendChild(openHandBtn);
+    }
+
+    if (meldables.length > 0) {
+      const meldBtn = document.createElement('button');
+      meldBtn.className = 'action-chip';
+      meldBtn.style.background = '#059669';
+      meldBtn.textContent = `✨ İşlenecek Taşları İşle (${meldables.length})`;
+      meldBtn.onclick = () => this.dispatchOkey101Meld(null);
+      this.dom.actionButtonsContainer.appendChild(meldBtn);
     }
 
     if (this.hasAIAccess()) {
@@ -2227,6 +2467,7 @@ class AppManager {
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'deal_complete') {
+      this.clearPlayedFeed();
       const okey = data.okeyInfo;
       this.dom.hudTrump.innerHTML = `<span style="color:${okey.colorHex}">★ ${okey.colorName} ${okey.number}</span>`;
       this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
@@ -2257,6 +2498,7 @@ class AppManager {
       this.updateAIAdvisor();
       this.syncHostStateToGuests({ type: 'tile_drawn', playerIndex: data.playerIndex });
     } else if (event === 'tile_discarded') {
+      this.recordPlayedMove(data.playerIndex, data.tile, 'tile');
       const vSeat = this.toVisualSeat(data.playerIndex, 4);
       this.scene.animateTileDiscard(data.tile, vSeat, () => this.renderOkeyDiscardsHelper());
       this.scene.renderPlayerIstaka(myPlayer?.hand || [], -1, this.canAutoSort());
@@ -2535,13 +2777,40 @@ class AppManager {
 
   showTileSelectionActions(tile) {
     const mySeat = this.getMySeat();
-    this.dom.actionTitle.textContent = `Seçilen Taş: ${tile.colorName} ${tile.number || 'Sahte Okey'}`;
+    const myPlayer = this.getMyPlayer();
+    const isMyDiscardTurn =
+      this.gameEngine.turnPhase === 'DISCARD' && this.gameEngine.currentTurn === mySeat;
+    const is101 = this.currentGameType === 'OKEY101';
+    const meldTargets =
+      is101 && isMyDiscardTurn && myPlayer?.hasOpened && this.gameEngine.findMeldTargetsForTile
+        ? this.gameEngine.findMeldTargetsForTile(tile)
+        : [];
+    const penaltyInfo =
+      is101 && isMyDiscardTurn && this.gameEngine.getDiscardPenaltyInfo
+        ? this.gameEngine.getDiscardPenaltyInfo(mySeat, tile)
+        : { willPenalize: false };
+
+    const tileDesc = `${tile.colorName} ${tile.isFakeOkey ? 'Sahte Okey' : tile.number}`;
+    this.dom.actionTitle.textContent = penaltyInfo.willPenalize
+      ? `⚠️ ${tileDesc} — DİKKAT: ${penaltyInfo.reason}`
+      : `Seçilen Taş: ${tileDesc}`;
     this.dom.actionButtonsContainer.innerHTML = '';
 
-    if (this.gameEngine.turnPhase === 'DISCARD' && this.gameEngine.currentTurn === mySeat) {
+    if (meldTargets.length > 0) {
+      const meldBtn = document.createElement('button');
+      meldBtn.className = 'action-chip';
+      meldBtn.style.background = '#059669';
+      meldBtn.textContent = '✨ Masadaki Pere İşle';
+      meldBtn.onclick = () => this.dispatchOkey101Meld(tile.id, meldTargets[0].perIndex);
+      this.dom.actionButtonsContainer.appendChild(meldBtn);
+    }
+
+    if (isMyDiscardTurn) {
       const discardBtn = document.createElement('button');
       discardBtn.className = 'action-chip pass';
-      discardBtn.textContent = '🚀 Bu Taşı At';
+      discardBtn.textContent = penaltyInfo.willPenalize
+        ? '🚨 Yine de At (+101 CEZA!)'
+        : '🚀 Bu Taşı At';
       discardBtn.onclick = () => this.dispatchOkeyDiscard(tile.id);
       this.dom.actionButtonsContainer.appendChild(discardBtn);
     }
@@ -2662,6 +2931,7 @@ class AppManager {
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'deal_complete') {
+      this.clearPlayedFeed();
       this.updateBatakHUD('Kartlar Dağıtıldı');
       if (this.canAutoSort()) {
         this.sortBatakCards();
@@ -2718,6 +2988,7 @@ class AppManager {
       this.updateAIAdvisor();
       this.syncHostStateToGuests({ type: event, currentTurn: data.currentTurn });
     } else if (event === 'card_played') {
+      this.recordPlayedMove(data.playerIndex, data.card, 'card');
       const vSeat = this.toVisualSeat(data.playerIndex, 4);
       this.scene.animateCardPlay(data.card, vSeat, null, () => {
         const visualTrick = (this.gameEngine.currentTrick || []).map((tc) => ({
@@ -3028,6 +3299,11 @@ class AppManager {
     if (event === 'log') {
       this.appendLog(data.message);
     } else if (event === 'table_deal') {
+      this.clearPlayedFeed();
+      if (data.tableCards?.length > 0) {
+        const top = data.tableCards[data.tableCards.length - 1];
+        this.recordPlayedMove(0, top.card || top, 'card', 'Ortada');
+      }
       this.scene.renderTableCards(data.tableCards);
       soundFx.playCardDeal();
       this.syncHostStateToGuests({ type: 'table_deal' });
@@ -3045,6 +3321,7 @@ class AppManager {
       this.updateAIAdvisor();
       this.syncHostStateToGuests({ type: 'turn_changed', currentTurn: data.currentTurn });
     } else if (event === 'card_played') {
+      this.recordPlayedMove(data.playerIndex, data.card, 'card');
       const vSeat = this.toVisualSeat(data.playerIndex, total);
       this.scene.animateCardPlay(data.card, vSeat, null, () => {
         const visualTable = (this.gameEngine.tableCards || []).map((tc) => ({

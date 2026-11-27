@@ -510,7 +510,8 @@ export class NetworkManager {
       case 'VOICE_OFFER':
       case 'VOICE_ANSWER':
       case 'VOICE_ICE':
-      case 'VOICE_STATE': {
+      case 'VOICE_STATE':
+      case 'VOICE_AUDIO': {
         this.emit('voice_signal', msg);
         break;
       }
@@ -713,7 +714,7 @@ export class NetworkManager {
             return;
           }
 
-          if (['VOICE_READY', 'VOICE_OFFER', 'VOICE_ANSWER', 'VOICE_ICE', 'VOICE_STATE'].includes(msg.type)) {
+          if (['VOICE_READY', 'VOICE_OFFER', 'VOICE_ANSWER', 'VOICE_ICE', 'VOICE_STATE', 'VOICE_AUDIO'].includes(msg.type)) {
             const p = this.roomPlayers.find((x) => x.clientId === guestClientId);
             const stamped = {
               ...msg,

@@ -1,7 +1,7 @@
 // Service Worker for VR Kıraathane 52 & 101 Okey PWA
 // Network-first strategy ensures updated 3D textures/meshes load immediately while keeping offline fallback.
 
-const CACHE_NAME = 'vr-kiraathane-v12';
+const CACHE_NAME = 'vr-kiraathane-v13';
 const STATIC_ASSETS = ['./', './index.html'];
 
 self.addEventListener('install', (event) => {

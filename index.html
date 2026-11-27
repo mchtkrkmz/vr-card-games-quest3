@@ -110,6 +110,9 @@
       </div>
     </div>
 
+    <!-- Live Played Cards / Opponent Moves Banner (Web, Mobile & Desktop) -->
+    <div id="played-cards-feed" class="played-cards-feed" aria-live="polite" style="display: none;"></div>
+
     <!-- Real-time AI Game Assistant Widget (VIP Developer Access Only) -->
     <div id="ai-coach-panel" class="ai-coach-panel interactive" style="display: none;">
       <div class="ai-coach-header">
@@ -385,9 +388,12 @@
       <!-- Connected Players Slots Grid -->
       <div id="lobby-players-grid" class="lobby-players-grid"></div>
 
-      <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
-        <button id="btn-lobby-start-game" class="glass-btn primary" style="padding: 12px 32px; font-size: 1.1rem;">
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 20px;">
+        <button id="btn-lobby-start-game" class="glass-btn primary" style="padding: 12px 28px; font-size: 1.05rem;">
           🎮 Oyunu Başlat
+        </button>
+        <button id="btn-lobby-mic" class="glass-btn voice-btn" style="padding: 12px 20px; font-size: 0.98rem;">
+          <span id="lobby-mic-icon">🎙️</span> <span id="lobby-mic-label">Mikrofonu Aç</span>
         </button>
         <button id="btn-lobby-leave" class="glass-btn"
           style="background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.5);">

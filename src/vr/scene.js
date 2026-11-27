@@ -2232,7 +2232,7 @@ export class VRCardScene {
   // --- FLOATING VR HUD ---
   buildFloatingVRHUD() {
     const hudWidth = 1024;
-    const hudHeight = 512;
+    const hudHeight = 560;
     this.hudCanvas = document.createElement('canvas');
     this.hudCanvas.width = hudWidth;
     this.hudCanvas.height = hudHeight;
@@ -2241,11 +2241,11 @@ export class VRCardScene {
     this.hudTexture = new THREE.CanvasTexture(this.hudCanvas);
     this.hudTexture.colorSpace = THREE.SRGBColorSpace;
 
-    const hudGeo = new THREE.PlaneGeometry(0.9, 0.45);
+    const hudGeo = new THREE.PlaneGeometry(0.92, 0.50);
     const hudMat = new THREE.MeshBasicMaterial({ map: this.hudTexture, transparent: true, side: THREE.DoubleSide });
 
     this.floatingHudMesh = new THREE.Mesh(hudGeo, hudMat);
-    this.floatingHudMesh.position.set(0, 1.45, -0.65);
+    this.floatingHudMesh.position.set(0, 1.46, -0.65);
     this.floatingHudMesh.rotation.x = 0.1;
     this.scene.add(this.floatingHudMesh);
 
@@ -2413,8 +2413,17 @@ export class VRCardScene {
     }
   }
 
+  setPlayedSummary(text) {
+    this.playedSummaryText = text || '';
+    if (this._lastHudState) this.updateHUD(this._lastHudState);
+  }
+
   updateHUD(state) {
     if (!this.hudContext) return;
+    this._lastHudState = state;
+    if (state && state.playedSummary === undefined && this.playedSummaryText) {
+      state = { ...state, playedSummary: this.playedSummaryText };
+    }
     const ctx = this.hudContext;
     const w = this.hudCanvas.width;
     const h = this.hudCanvas.height;
@@ -2455,13 +2464,37 @@ export class VRCardScene {
 
     // Status Banner
     ctx.fillStyle = 'rgba(30, 41, 59, 0.88)';
-    ctx.roundRect(40, 95, w - 80, 50, 12);
+    ctx.beginPath();
+    ctx.roundRect(40, 90, w - 80, 48, 12);
     ctx.fill();
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 24px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(state.status || 'Oyun Sürüyor', w / 2, 128);
+    ctx.fillText(state.status || 'Oyun Sürüyor', w / 2, 122);
+
+    // Live Played Cards / Last Move Strip in VR HUD
+    if (state.playedSummary) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.beginPath();
+      ctx.roundRect(40, 146, w - 80, 46, 12);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.65)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fde68a';
+      ctx.font = 'bold 21px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      const summaryTxt =
+        state.playedSummary.length > 82
+          ? state.playedSummary.slice(0, 80) + '…'
+          : state.playedSummary;
+      ctx.fillText(`🃏 ${summaryTxt}`, w / 2, 176);
+    }
+
+    const scoresTop = state.playedSummary ? 204 : 165;
+    const scoresHeight = state.playedSummary ? 172 : 185;
 
     // Scores
     if (state.scores && state.scores.length > 0) {
@@ -2471,7 +2504,8 @@ export class VRCardScene {
         const isActive = i === state.currentTurn;
 
         ctx.fillStyle = isActive ? 'rgba(59, 130, 246, 0.35)' : 'rgba(30, 41, 59, 0.4)';
-        ctx.roundRect(startX + 6, 165, colW - 12, 180, 16);
+        ctx.beginPath();
+        ctx.roundRect(startX + 6, scoresTop, colW - 12, scoresHeight, 16);
         ctx.fill();
 
         if (isActive) {
@@ -2481,26 +2515,28 @@ export class VRCardScene {
         }
 
         ctx.fillStyle = isActive ? '#93c5fd' : '#f1f5f9';
-        ctx.font = 'bold 24px sans-serif';
+        ctx.font = 'bold 23px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(p.name, startX + colW / 2, 205);
+        ctx.fillText(p.name, startX + colW / 2, scoresTop + 36);
 
         ctx.fillStyle = '#cbd5e1';
-        ctx.font = '20px sans-serif';
-        if (p.bid !== undefined) ctx.fillText(`İhale: ${p.bid}`, startX + colW / 2, 245);
-        if (p.tricks !== undefined) ctx.fillText(`Alınan: ${p.tricks}`, startX + colW / 2, 280);
-        if (p.opened !== undefined) ctx.fillText(`Açtı: ${p.opened ? 'Evet' : 'Hayır'}`, startX + colW / 2, 245);
+        ctx.font = '19px sans-serif';
+        if (p.bid !== undefined) ctx.fillText(`İhale: ${p.bid}`, startX + colW / 2, scoresTop + 74);
+        if (p.tricks !== undefined) ctx.fillText(`Alınan: ${p.tricks}`, startX + colW / 2, scoresTop + 106);
+        if (p.opened !== undefined) ctx.fillText(`Açtı: ${p.opened ? 'Evet' : 'Hayır'}`, startX + colW / 2, scoresTop + 74);
 
         ctx.fillStyle = '#fef08a';
-        ctx.font = 'bold 28px sans-serif';
-        ctx.fillText(`${p.score} Puan`, startX + colW / 2, 325);
+        ctx.font = 'bold 26px sans-serif';
+        ctx.fillText(`${p.score} Puan`, startX + colW / 2, scoresTop + 148);
       });
     }
 
     // AI Advisor Card in 3D VR HUD
     if (state.aiAdvice) {
+      const aiTop = scoresTop + scoresHeight + 14;
       ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
-      ctx.roundRect(40, 360, w - 80, 120, 16);
+      ctx.beginPath();
+      ctx.roundRect(40, aiTop, w - 80, 118, 16);
       ctx.fill();
 
       ctx.strokeStyle = '#38bdf8';
@@ -2510,20 +2546,20 @@ export class VRCardScene {
       ctx.fillStyle = '#38bdf8';
       ctx.font = 'bold 22px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText('🤖 AI ASİSTAN ÖNERİSİ:', 60, 395);
+      ctx.fillText('🤖 AI ASİSTAN ÖNERİSİ:', 60, aiTop + 35);
 
       ctx.fillStyle = '#f8fafc';
       ctx.font = '20px sans-serif';
       const cleanAdvice = state.aiAdvice.replace(/\*\*/g, '').replace(/[\n\r]+/g, ' ');
       const displayAdvice = cleanAdvice.length > 70 ? cleanAdvice.substring(0, 68) + '...' : cleanAdvice;
-      ctx.fillText(displayAdvice, 320, 395);
+      ctx.fillText(displayAdvice, 320, aiTop + 35);
 
       if (state.aiDetail) {
         ctx.fillStyle = '#fde047';
         ctx.font = '19px sans-serif';
         const cleanDetail = state.aiDetail.replace(/\*\*/g, '').replace(/[\n\r]+/g, ' ');
         const displayDetail = cleanDetail.length > 85 ? cleanDetail.substring(0, 83) + '...' : cleanDetail;
-        ctx.fillText(displayDetail, 60, 440);
+        ctx.fillText(displayDetail, 60, aiTop + 80);
       }
     }
 
@@ -3234,6 +3270,64 @@ export class VRCardScene {
     }
   }
 
+  createPlayedCardBadge(playerName, card, accentColor = '#3b82f6') {
+    const suitObj = SUITS[card?.suit] || SUITS.S;
+    const rankStr = String(card?.rank ?? card?.label ?? '');
+    const courtNames = { J: 'Vale', Q: 'Kız', K: 'Papaz', A: 'As' };
+    const cardLabel = `${suitObj.symbol} ${suitObj.name} ${courtNames[rankStr] || rankStr}`;
+    const isRed = typeof card?.isRed === 'boolean' ? card.isRed : suitObj.isRed;
+    const cacheKey = `PLAYED_CARD|${playerName}|${cardLabel}|${accentColor}|${isRed ? 'R' : 'B'}`;
+
+    if (!this._sharedPlayedCardBadgeGeo) {
+      this._sharedPlayedCardBadgeGeo = new THREE.PlaneGeometry(0.21, 0.058);
+    }
+
+    let mat = this.nameBadgeCache.get(cacheKey);
+    if (!mat) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 420;
+      canvas.height = 116;
+      const ctx = canvas.getContext('2d');
+
+      // Outer dark glass frame
+      ctx.fillStyle = 'rgba(10, 15, 29, 0.94)';
+      ctx.beginPath();
+      ctx.roundRect(4, 4, 412, 108, 22);
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = accentColor;
+      ctx.stroke();
+
+      // Player name top row
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = 'bold 23px "Segoe UI", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const cleanName = String(playerName || 'Oyuncu').length > 16
+        ? String(playerName).slice(0, 15) + '…'
+        : String(playerName || 'Oyuncu');
+      ctx.fillText(cleanName, 210, 30);
+
+      // Crisp white card-value pill bottom row
+      ctx.fillStyle = '#fffdf7';
+      ctx.beginPath();
+      ctx.roundRect(22, 50, 376, 50, 14);
+      ctx.fill();
+
+      ctx.fillStyle = isRed ? '#dc2626' : '#0f172a';
+      ctx.font = '900 29px "Segoe UI", Arial, sans-serif';
+      ctx.fillText(cardLabel, 210, 76);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+      this.nameBadgeCache.set(cacheKey, mat);
+    }
+
+    return new THREE.Mesh(this._sharedPlayedCardBadgeGeo, mat);
+  }
+
   renderTableCards(tableCards) {
     while (this.tableCenterGroup.children.length > 0) this.tableCenterGroup.remove(this.tableCenterGroup.children.pop());
     if (!tableCards || tableCards.length === 0) return;
@@ -3245,60 +3339,68 @@ export class VRCardScene {
     const isTrick = tableCards.some(tc => (tc && (tc.playerIndex !== undefined || tc.seat !== undefined)));
 
     if (isTrick) {
-      // 4 quadrants laid flat on emerald felt — zero table clipping!
+      // 4 clear quadrants angled subtly toward viewer eyes for high legibility in VR, Web, and Mobile
       const seatLayouts = {
-        0: { x: 0, z: 0.18, yaw: 0.02 },
-        1: { x: 0.21, z: 0.0, yaw: -0.06 },
-        2: { x: 0, z: -0.18, yaw: -0.03 },
-        3: { x: -0.21, z: 0.0, yaw: 0.06 }
+        0: { x: 0, z: 0.155, yaw: 0.01, badgeZ: 0.255, badgeY: 0.056 },
+        1: { x: 0.195, z: 0.0, yaw: -0.04, badgeZ: -0.105, badgeY: 0.068 },
+        2: { x: 0, z: -0.150, yaw: -0.02, badgeZ: -0.255, badgeY: 0.076 },
+        3: { x: -0.195, z: 0.0, yaw: 0.04, badgeZ: -0.105, badgeY: 0.068 }
       };
 
       tableCards.forEach((tc, idx) => {
         const card = tc.card || tc;
         const seat = tc.playerIndex !== undefined ? tc.playerIndex : (tc.seat !== undefined ? tc.seat : idx % 4);
         const layout = seatLayouts[seat] || seatLayouts[idx % 4];
-        const cardY = 0.002 + idx * 0.0028;
+        const cardY = 0.014 + idx * 0.0032;
 
-        this._addCardShadowPlane(this.tableCenterGroup, layout.x, 0.0008 + idx * 0.0028, layout.z, layout.yaw, 1.0);
+        this._addCardShadowPlane(this.tableCenterGroup, layout.x, 0.001 + idx * 0.002, layout.z, layout.yaw, 1.18);
 
         const cardMesh = createCard3DMesh(card);
-        cardMesh.scale.set(1.28, 1.28, 1.28);
+        cardMesh.scale.set(1.45, 1.45, 1.45);
         cardMesh.position.set(layout.x, cardY, layout.z);
-        cardMesh.rotation.set(-Math.PI / 2, 0, layout.yaw);
+        // Subtle 10° tilt toward local viewer eliminates grazing-angle blur on opponent cards!
+        cardMesh.rotation.set(-Math.PI / 2 + 0.18, 0, layout.yaw);
         this.tableCenterGroup.add(cardMesh);
 
-        // Floating 3D Player Name Badge cleanly hovering behind/above each card
+        // High-contrast 3D Card + Player Callout Badge facing viewer
         const pName = (seat === 0) ? 'Siz' : (this.tablePlayers?.[seat]?.name || defaultNames[seat]);
-        const badge = this.createFloatingNameBadge(pName, seatPillColors[seat] || '#3b82f6');
-        badge.position.set(layout.x, 0.048, layout.z - 0.095);
-        badge.rotation.x = -0.55;
+        const badge = this.createPlayedCardBadge(pName, card, seatPillColors[seat] || '#3b82f6');
+        badge.position.set(layout.x, layout.badgeY, layout.badgeZ);
+        badge.rotation.x = -0.48;
         this.tableCenterGroup.add(badge);
       });
     } else {
-      // Stacked table layout (e.g. Pişti) flat on felt
+      // Stacked table layout (e.g. Pişti) with clear angled top card + 3D card badge
       const total = tableCards.length;
       tableCards.forEach((tc, idx) => {
         const card = tc.card || tc;
         const isFaceUp = tc.faceUp !== undefined ? tc.faceUp : true;
         const isTopCard = idx === total - 1;
         const cardMesh = createCard3DMesh(card);
-        const cardY = 0.002 + idx * 0.0022;
+        const cardY = 0.003 + idx * 0.0025;
 
         if (isTopCard) {
-          this._addCardShadowPlane(this.tableCenterGroup, 0, 0.0009 + idx * 0.0022, 0.02, 0, 1.0);
-          cardMesh.scale.set(1.28, 1.28, 1.28);
-          cardMesh.position.set(0, cardY, 0.02);
-          cardMesh.rotation.set(isFaceUp ? -Math.PI / 2 : Math.PI / 2, 0, 0);
+          this._addCardShadowPlane(this.tableCenterGroup, 0, 0.001 + idx * 0.002, 0.02, 0, 1.2);
+          cardMesh.scale.set(1.48, 1.48, 1.48);
+          cardMesh.position.set(0, cardY + 0.012, 0.02);
+          cardMesh.rotation.set(isFaceUp ? -Math.PI / 2 + 0.18 : Math.PI / 2, 0, 0);
 
-          if (tc.playerIndex !== undefined) {
-            const pName = (tc.playerIndex === 0) ? 'Siz' : (this.tablePlayers?.[tc.playerIndex]?.name || defaultNames[tc.playerIndex]);
-            const badge = this.createFloatingNameBadge(pName, seatPillColors[tc.playerIndex] || '#10b981');
-            badge.position.set(0, 0.052, -0.10);
-            badge.rotation.x = -0.55;
+          if (isFaceUp) {
+            const pName = tc.playerIndex !== undefined
+              ? ((tc.playerIndex === 0) ? 'Siz' : (this.tablePlayers?.[tc.playerIndex]?.name || defaultNames[tc.playerIndex]))
+              : `Yerde (${total} Kart)`;
+            const badge = this.createPlayedCardBadge(
+              pName,
+              card,
+              tc.playerIndex !== undefined ? (seatPillColors[tc.playerIndex] || '#10b981') : '#f59e0b'
+            );
+            badge.position.set(0, 0.074, -0.115);
+            badge.rotation.x = -0.48;
             this.tableCenterGroup.add(badge);
           }
         } else {
           const offsetAngle = idx * 0.25 - 0.35;
+          cardMesh.scale.set(1.22, 1.22, 1.22);
           cardMesh.position.set(Math.sin(offsetAngle) * 0.028, cardY, Math.cos(offsetAngle) * 0.018 - 0.02);
           cardMesh.rotation.set(isFaceUp ? -Math.PI / 2 : Math.PI / 2, 0, offsetAngle * 0.35);
         }
@@ -3311,6 +3413,7 @@ export class VRCardScene {
   animateCardPlay(card, fromSeat, targetTablePos, onComplete) {
     soundFx.playCardDeal();
     const flyingMesh = createCard3DMesh(card);
+    flyingMesh.scale.set(1.42, 1.42, 1.42);
     let startPos = new THREE.Vector3();
 
     if (fromSeat === 0) {
@@ -3323,12 +3426,11 @@ export class VRCardScene {
     flyingMesh.position.copy(startPos);
     this.scene.add(flyingMesh);
 
-    // Designated quadrant positions lying flat on emerald felt
     const quadrantOffsets = {
-      0: new THREE.Vector3(0, 0.835, 0.18),
-      1: new THREE.Vector3(0.21, 0.835, 0),
-      2: new THREE.Vector3(0, 0.835, -0.18),
-      3: new THREE.Vector3(-0.21, 0.835, 0)
+      0: new THREE.Vector3(0, 0.842, 0.155),
+      1: new THREE.Vector3(0.195, 0.842, 0),
+      2: new THREE.Vector3(0, 0.842, -0.150),
+      3: new THREE.Vector3(-0.195, 0.842, 0)
     };
 
     const targetPos = targetTablePos || quadrantOffsets[fromSeat] || new THREE.Vector3(0, 0.835, 0);
@@ -3500,6 +3602,63 @@ export class VRCardScene {
     this.tableCenterGroup.add(centerHit);
   }
 
+  createPlayedTileBadge(playerName, tile, accentColor = '#3b82f6', actionHint = '') {
+    const colorMap = { RED: '#dc2626', BLACK: '#0f172a', BLUE: '#1d4ed8', YELLOW: '#b45309', FAKE: '#b45309' };
+    const key = String(tile?.colorKey || '').toUpperCase();
+    const ink = colorMap[key] || '#0f172a';
+    const tileLabel = tile?.isFakeOkey
+      ? '★ Sahte Okey'
+      : `${tile?.colorName || ''} ${tile?.number ?? ''}`.trim();
+    const cacheKey = `PLAYED_TILE|${playerName}|${tileLabel}|${accentColor}|${ink}|${actionHint}`;
+
+    if (!this._sharedPlayedCardBadgeGeo) {
+      this._sharedPlayedCardBadgeGeo = new THREE.PlaneGeometry(0.21, 0.058);
+    }
+
+    let mat = this.nameBadgeCache.get(cacheKey);
+    if (!mat) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 420;
+      canvas.height = 116;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = 'rgba(10, 15, 29, 0.94)';
+      ctx.beginPath();
+      ctx.roundRect(4, 4, 412, 108, 22);
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = accentColor;
+      ctx.stroke();
+
+      const cleanName = String(playerName || 'Oyuncu').length > 14
+        ? String(playerName).slice(0, 13) + '…'
+        : String(playerName || 'Oyuncu');
+      const headerText = actionHint ? `${cleanName} • ${actionHint}` : cleanName;
+      ctx.fillStyle = actionHint ? '#86efac' : '#cbd5e1';
+      ctx.font = 'bold 21px "Segoe UI", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(headerText, 210, 30);
+
+      ctx.fillStyle = '#fffdf7';
+      ctx.beginPath();
+      ctx.roundRect(22, 50, 376, 50, 14);
+      ctx.fill();
+
+      ctx.fillStyle = ink;
+      ctx.font = '900 28px "Segoe UI", Arial, sans-serif';
+      ctx.fillText(tileLabel, 210, 76);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+      this.nameBadgeCache.set(cacheKey, mat);
+    }
+
+    return new THREE.Mesh(this._sharedPlayedCardBadgeGeo, mat);
+  }
+
   renderOkeyDiscards(discardPiles, canDrawLeft = false) {
     const defaultNames = ['Siz', 'Hasan Dayı', 'Hayrettin', 'Serdar'];
     const seatPillColors = ['#10b981', '#f59e0b', '#3b82f6', '#a855f7'];
@@ -3548,18 +3707,31 @@ export class VRCardScene {
         dg.add(this.selfDiscardDropRing);
       }
 
-      // 2. Player Name Badge above discard tray
+      // 2. Player Name Badge above discard tray (shows last discarded tile clearly!)
       const pName = (seat === 0) ? 'Siz' : (this.tablePlayers?.[seat]?.name || defaultNames[seat]);
       const isLeftPlayer = (seat === 3);
-      const sub = (isLeftPlayer && canDrawLeft) ? '📥 Yandan Al' : '';
-      const badge = this.createFloatingNameBadge(
-        pName,
-        isLeftPlayer && canDrawLeft ? '#22c55e' : (seatPillColors[seat] || '#3b82f6'),
-        '👤',
-        sub
-      );
-      badge.position.set(0, 0.078, -0.06);
-      badge.rotation.x = -Math.PI / 4;
+      const topTileForBadge = pile && pile.length > 0 ? pile[pile.length - 1] : null;
+      const badgeColor = isLeftPlayer && canDrawLeft ? '#22c55e' : (seatPillColors[seat] || '#3b82f6');
+      let badge;
+      if (topTileForBadge) {
+        badge = this.createPlayedTileBadge(
+          pName,
+          topTileForBadge,
+          badgeColor,
+          isLeftPlayer && canDrawLeft ? '📥 Al' : ''
+        );
+        badge.position.set(0, 0.088, -0.068);
+        badge.rotation.x = -Math.PI / 4;
+      } else {
+        badge = this.createFloatingNameBadge(
+          pName,
+          badgeColor,
+          '👤',
+          ''
+        );
+        badge.position.set(0, 0.078, -0.06);
+        badge.rotation.x = -Math.PI / 4;
+      }
       dg.add(badge);
 
       if (!pile || pile.length === 0) return;
@@ -3590,21 +3762,27 @@ export class VRCardScene {
     });
   }
 
-  // 101 Okey Opened Pers Display on Table Center
+  // 101 Okey Opened Pers Display on Table Center (clean 2-column grid for melding visibility)
   render101OpenedPers(openedPersList) {
     while (this.openedPersGroup.children.length > 0) {
       this.openedPersGroup.remove(this.openedPersGroup.children.pop());
     }
+    if (!Array.isArray(openedPersList) || openedPersList.length === 0) return;
 
+    const cols = openedPersList.length > 4 ? 2 : 1;
     openedPersList.forEach((perObj, perIdx) => {
       const perRow = new THREE.Group();
-      const rowY = perIdx * 0.04 - 0.12;
-      perRow.position.set(0, 0.005, rowY);
+      const col = cols === 2 ? perIdx % 2 : 0;
+      const row = cols === 2 ? Math.floor(perIdx / 2) : perIdx;
+      const colX = cols === 2 ? (col === 0 ? -0.18 : 0.18) : 0;
+      const rowZ = row * 0.048 - 0.14;
+      perRow.position.set(colX, 0.008, rowZ);
 
       perObj.tiles.forEach((tile, tileIdx) => {
         const mesh = createOkeyTile3DMesh(tile);
-        mesh.position.set((tileIdx - (perObj.tiles.length - 1) / 2) * 0.035, 0, 0);
-        mesh.rotation.x = -Math.PI / 2;
+        mesh.scale.set(0.86, 0.86, 0.86);
+        mesh.position.set((tileIdx - (perObj.tiles.length - 1) / 2) * 0.030, 0, 0);
+        mesh.rotation.x = -Math.PI / 2 + 0.14;
         perRow.add(mesh);
       });
 

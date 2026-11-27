@@ -493,7 +493,8 @@ export async function startGameServer(options = {}) {
       case 'VOICE_OFFER':
       case 'VOICE_ANSWER':
       case 'VOICE_ICE':
-      case 'VOICE_STATE': {
+      case 'VOICE_STATE':
+      case 'VOICE_AUDIO': {
         const room = rooms.get(client.roomCode);
         if (!room) return;
         const senderPlayer = room.players.find((p) => p.clientId === client.clientId);

@@ -12,6 +12,56 @@ const ICE_SERVERS = [
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
+const RELAY_SAMPLE_RATE = 12000;
+
+function linearToMuLawByte(sample) {
+  const BIAS = 0x84;
+  const CLIP = 32635;
+  let s = Math.max(-1, Math.min(1, sample));
+  let pcm = Math.round(s * 32767);
+  let sign = 0;
+  if (pcm < 0) {
+    sign = 0x80;
+    pcm = -pcm;
+  }
+  if (pcm > CLIP) pcm = CLIP;
+  pcm += BIAS;
+  let exponent = 7;
+  for (let expMask = 0x4000; (pcm & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1) {
+    // find segment
+  }
+  const mantissa = (pcm >> (exponent + 3)) & 0x0f;
+  return ~(sign | (exponent << 4) | mantissa) & 0xff;
+}
+
+function muLawByteToLinear(uVal) {
+  const u = ~uVal & 0xff;
+  const sign = u & 0x80;
+  const exponent = (u >> 4) & 0x07;
+  const mantissa = u & 0x0f;
+  let sample = ((mantissa << 3) + 0x84) << exponent;
+  sample -= 0x84;
+  return (sign ? -sample : sample) / 32768;
+}
+
+function uint8ToBase64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) {
+    bin += String.fromCharCode(bytes[i]);
+  }
+  return typeof btoa === 'function' ? btoa(bin) : Buffer.from(bytes).toString('base64');
+}
+
+function base64ToUint8(b64) {
+  if (typeof atob === 'function') {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  return new Uint8Array(Buffer.from(b64, 'base64'));
+}
+
 export class SpatialVoiceChatEngine {
   constructor() {
     this.network = null;
@@ -40,6 +90,11 @@ export class SpatialVoiceChatEngine {
     this._vadInterval = null;
     this._seatResolver = null; // (clientId) => visualSeatIndex
 
+    // Relay fallback (server/P2P data channel audio) when direct WebRTC fails behind NAT / mobile data
+    this._relayProcessor = null;
+    this._relaySink = null;
+    this._relayPlayback = new Map(); // remoteClientId -> { gain, nextTime, lastAt }
+
     // Reusable vectors to avoid per-frame allocations when syncing Web Audio listener
     this._forwardVec = new THREE.Vector3();
     this._upVec = new THREE.Vector3();
@@ -55,7 +110,7 @@ export class SpatialVoiceChatEngine {
 
     this.unlockRemoteAudio = this.unlockRemoteAudio.bind(this);
     if (typeof window !== 'undefined') {
-      ['touchstart', 'pointerdown', 'click'].forEach((evt) => {
+      ['touchstart', 'pointerdown', 'click', 'keydown'].forEach((evt) => {
         window.addEventListener(evt, this.unlockRemoteAudio, { passive: true });
       });
     }
@@ -126,19 +181,23 @@ export class SpatialVoiceChatEngine {
   }
 
   _syncSpeakerGain() {
-    const useDirectMobile = this.shouldUseDirectMobileAudio();
-    const ctxRunning = this.audioContext && this.audioContext.state === 'running';
-    const vol = this.speakerMuted || useDirectMobile ? 0 : this.speakerVolume;
+    const vol = this.speakerMuted ? 0 : this.speakerVolume;
     if (this.masterSpeakerGain && this.audioContext) {
       this.masterSpeakerGain.gain.setValueAtTime(vol, this.audioContext.currentTime);
     }
     for (const node of this.peerAudioNodes.values()) {
       if (node.audioEl) {
-        const useDomPlayback = useDirectMobile || !ctxRunning;
-        node.audioEl.muted = this.speakerMuted || !useDomPlayback;
+        node.audioEl.muted = this.speakerMuted;
         node.audioEl.volume = this.speakerMuted ? 0 : this.speakerVolume;
-        if (!this.speakerMuted && useDomPlayback && node.audioEl.paused) {
+        if (!this.speakerMuted && node.audioEl.paused) {
           node.audioEl.play().catch(() => {});
+        }
+      }
+    }
+    if (this.audioContext && this._relayPlayback) {
+      for (const state of this._relayPlayback.values()) {
+        if (state.gain) {
+          state.gain.gain.setValueAtTime(vol, this.audioContext.currentTime);
         }
       }
     }
@@ -234,12 +293,13 @@ export class SpatialVoiceChatEngine {
 
       this._setupLocalAnalyser();
       this._startVadTimer();
+      this._startRelayCapture();
 
       // Add mic tracks to all existing RTCPeerConnections and signal readiness
       if (this.network && this.network.isConnected) {
         this.syncPeersWithRoom(this.network.roomPlayers);
         for (const [remoteId, entry] of this.peerConnections.entries()) {
-          this._attachLocalTrackToPc(entry.pc);
+          await this._attachLocalTrackToPc(entry.pc);
           if (entry.pc.signalingState === 'stable') {
             await this._sendOffer(remoteId, entry);
           }
@@ -344,14 +404,14 @@ export class SpatialVoiceChatEngine {
       pendingIce: [],
       makingOffer: false,
       seatIndex: fallbackSeat,
+      createdAt: Date.now(),
     };
     this.peerConnections.set(remoteClientId, entry);
 
-    // Proactively open sendrecv transceiver on initiator side so Safari/Mobile SDP matches cleanly
-    if (!isPolite) {
-      pc.addTransceiver('audio', { direction: 'sendrecv' });
-    }
-    this._attachLocalTrackToPc(pc);
+    // Proactively open sendrecv transceiver on both peers so bidirectional RTP flows reliably
+    const audioTransceiver = pc.addTransceiver('audio', { direction: 'sendrecv' });
+    entry.audioTransceiver = audioTransceiver;
+    this._attachLocalTrackToPc(pc).catch(() => {});
 
     pc.onicecandidate = (evt) => {
       if (evt.candidate && this.network) {
@@ -383,7 +443,7 @@ export class SpatialVoiceChatEngine {
     return entry;
   }
 
-  _attachLocalTrackToPc(pc) {
+  async _attachLocalTrackToPc(pc) {
     if (!this.localStream) return;
     const senders = pc.getSenders();
     for (const track of this.localStream.getAudioTracks()) {
@@ -394,7 +454,9 @@ export class SpatialVoiceChatEngine {
         .find((tr) => tr.receiver?.track?.kind === 'audio' && !tr.sender.track);
       if (audioTransceiver) {
         audioTransceiver.direction = 'sendrecv';
-        audioTransceiver.sender.replaceTrack(track).catch(() => {});
+        try {
+          await audioTransceiver.sender.replaceTrack(track);
+        } catch {}
       } else {
         pc.addTrack(track, this.localStream);
       }
@@ -423,6 +485,11 @@ export class SpatialVoiceChatEngine {
     const remoteId = msg.fromClientId;
     if (!remoteId || !this.network || remoteId === this.network.clientId) return;
 
+    if (msg.type === 'VOICE_AUDIO') {
+      this._playRelayAudio(remoteId, msg.payload || {}, msg.fromSeat ?? 1);
+      return;
+    }
+
     let entry = this.peerConnections.get(remoteId);
     if (!entry) {
       const isPolite = this.network.clientId < remoteId;
@@ -442,8 +509,13 @@ export class SpatialVoiceChatEngine {
         if (offerCollision && !entry.isPolite) {
           return; // Glare: impolite peer ignores colliding offer
         }
+        if (offerCollision && entry.isPolite && pc.signalingState !== 'stable') {
+          try {
+            await pc.setLocalDescription({ type: 'rollback' });
+          } catch {}
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        this._attachLocalTrackToPc(pc);
+        await this._attachLocalTrackToPc(pc);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         this.network.sendVoiceSignal(
@@ -491,6 +563,13 @@ export class SpatialVoiceChatEngine {
       }
       this.peerConnections.delete(remoteId);
     }
+    const relayState = this._relayPlayback?.get(remoteId);
+    if (relayState) {
+      try {
+        relayState.gain?.disconnect();
+      } catch {}
+      this._relayPlayback.delete(remoteId);
+    }
     this.detachRemoteAudio(remoteId);
   }
 
@@ -500,7 +579,7 @@ export class SpatialVoiceChatEngine {
     }
   }
 
-  // Attach Remote Peer's MediaStream with mobile DOM <audio> support & Desktop/VR 3D HRTF Panner
+  // Attach Remote Peer's MediaStream with reliable direct DOM <audio> playback on all platforms & Analyser VAD
   attachRemoteAudioStream(peerId, visualSeatIndex, remoteStream) {
     this.ensureAudioContext();
     if (!remoteStream) return;
@@ -508,7 +587,6 @@ export class SpatialVoiceChatEngine {
     try {
       this.detachRemoteAudio(peerId);
 
-      const useDirectMobile = this.shouldUseDirectMobileAudio();
       const audioEl = document.createElement('audio');
       audioEl.autoplay = true;
       audioEl.playsInline = true;
@@ -519,46 +597,33 @@ export class SpatialVoiceChatEngine {
       const sink = this._getAudioSinkContainer();
       if (sink) sink.appendChild(audioEl);
 
-      const ctxRunning = this.audioContext && this.audioContext.state === 'running';
-      const useDomPlayback = useDirectMobile || !ctxRunning;
-      audioEl.muted = this.speakerMuted || !useDomPlayback;
+      // Play remote voice directly through <audio> on Desktop, Mobile & Quest 3 (avoids Chromium silent MediaStreamAudioSourceNode bug)
+      audioEl.muted = this.speakerMuted;
       audioEl.volume = this.speakerMuted ? 0 : this.speakerVolume;
       audioEl.play().catch(() => {});
 
+      remoteStream.getAudioTracks().forEach((tr) => {
+        tr.onunmute = () => {
+          if (!this.speakerMuted && audioEl.paused) {
+            audioEl.play().catch(() => {});
+          }
+        };
+      });
+
       let source = null;
-      let panner = null;
-      let gainNode = null;
       let analyser = null;
 
-      if (this.audioContext && this.masterSpeakerGain) {
+      if (this.audioContext) {
         source = this.audioContext.createMediaStreamSource(remoteStream);
         analyser = this.audioContext.createAnalyser();
         analyser.fftSize = 256;
         source.connect(analyser);
-
-        // On Desktop & Meta Quest VR, route through 3D HRTF Panner; on mobile DOM <audio> plays directly without echo
-        if (!useDirectMobile) {
-          panner = this.audioContext.createPanner();
-          panner.panningModel = 'HRTF';
-          panner.distanceModel = 'inverse';
-          panner.refDistance = 0.5;
-          panner.maxDistance = 12;
-          panner.rolloffFactor = 1.1;
-          panner.coneInnerAngle = 360;
-
-          gainNode = this.audioContext.createGain();
-          gainNode.gain.value = 1.0;
-
-          analyser.connect(panner);
-          panner.connect(gainNode);
-          gainNode.connect(this.masterSpeakerGain);
-        }
       }
 
       this.peerAudioNodes.set(peerId, {
         source,
-        panner,
-        gain: gainNode,
+        panner: null,
+        gain: null,
         analyser,
         audioEl,
         stream: remoteStream,
@@ -712,7 +777,121 @@ export class SpatialVoiceChatEngine {
     }
   }
 
+  // --- RELAY AUDIO FALLBACK (works through WS server and PeerJS data channel) ---
+  isPeerWebRtcConnected(remoteId) {
+    const pc = this.peerConnections.get(remoteId)?.pc;
+    if (!pc) return false;
+    const ice = pc.iceConnectionState;
+    return pc.connectionState === 'connected' || ice === 'connected' || ice === 'completed';
+  }
+
+  _needsRelay() {
+    if (!this.network || !this.network.isConnected) return false;
+    const now = Date.now();
+    for (const [remoteId, entry] of this.peerConnections.entries()) {
+      if (!this.isPeerWebRtcConnected(remoteId) && now - (entry.createdAt || 0) > 3000) return true;
+    }
+    return false;
+  }
+
+  _startRelayCapture() {
+    if (this._relayProcessor || !this.audioContext || !this.localSource) return;
+    if (typeof this.audioContext.createScriptProcessor !== 'function') return;
+    const ctx = this.audioContext;
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    proc.onaudioprocess = (e) => {
+      const out = e.outputBuffer.getChannelData(0);
+      out.fill(0);
+      if (!this.isVoiceActive || this.isMuted || !this._needsRelay()) return;
+      const input = e.inputBuffer.getChannelData(0);
+      let peak = 0;
+      for (let k = 0; k < input.length; k += 4) peak = Math.max(peak, Math.abs(input[k]));
+      if (peak < 0.008) return; // noise gate: don't stream silence
+      const ratio = ctx.sampleRate / RELAY_SAMPLE_RATE;
+      const outLen = Math.floor(input.length / ratio);
+      const bytes = new Uint8Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const start = Math.floor(i * ratio);
+        const end = Math.min(input.length, Math.floor((i + 1) * ratio));
+        let sum = 0;
+        for (let j = start; j < end; j++) sum += input[j];
+        bytes[i] = linearToMuLawByte(sum / Math.max(1, end - start));
+      }
+      this.network.sendVoiceSignal('VOICE_AUDIO', { pcmu: uint8ToBase64(bytes), sr: RELAY_SAMPLE_RATE });
+    };
+    this.localSource.connect(proc);
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    proc.connect(sink);
+    sink.connect(ctx.destination);
+    this._relayProcessor = proc;
+    this._relaySink = sink;
+  }
+
+  _stopRelayCapture() {
+    try {
+      this._relayProcessor?.disconnect();
+      this._relaySink?.disconnect();
+    } catch {}
+    if (this._relayProcessor) this._relayProcessor.onaudioprocess = null;
+    this._relayProcessor = null;
+    this._relaySink = null;
+  }
+
+  _playRelayAudio(remoteId, payload, fromSeat = 1) {
+    // Direct WebRTC audio already flowing for this peer -> avoid double voice
+    if (this.isPeerWebRtcConnected(remoteId) && this.peerAudioNodes.has(remoteId)) return;
+    if (!payload?.pcmu) return;
+    const ctx = this.ensureAudioContext();
+    if (!ctx) return;
+
+    const bytes = base64ToUint8(payload.pcmu);
+    if (bytes.length === 0) return;
+    const srcRate = Number(payload.sr) || RELAY_SAMPLE_RATE;
+    const decoded = new Float32Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) decoded[i] = muLawByteToLinear(bytes[i]);
+
+    // Upsample to native context rate (Safari rejects low-rate AudioBuffers)
+    const outLen = Math.max(1, Math.round(bytes.length * (ctx.sampleRate / srcRate)));
+    const buf = ctx.createBuffer(1, outLen, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    const step = (bytes.length - 1) / Math.max(1, outLen - 1);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * step;
+      const i0 = Math.floor(pos);
+      const i1 = Math.min(bytes.length - 1, i0 + 1);
+      const frac = pos - i0;
+      ch[i] = decoded[i0] * (1 - frac) + decoded[i1] * frac;
+    }
+
+    let state = this._relayPlayback.get(remoteId);
+    if (!state) {
+      const gain = ctx.createGain();
+      gain.connect(ctx.destination);
+      state = { gain, nextTime: 0, lastAt: 0 };
+      this._relayPlayback.set(remoteId, state);
+    }
+    state.gain.gain.setValueAtTime(this.speakerMuted ? 0 : this.speakerVolume, ctx.currentTime);
+    state.lastAt = Date.now();
+
+    const now = ctx.currentTime;
+    if (state.nextTime < now + 0.03 || state.nextTime > now + 0.9) {
+      state.nextTime = now + 0.12; // small jitter buffer
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(state.gain);
+    src.start(state.nextTime);
+    state.nextTime += buf.duration;
+
+    let peak = 0;
+    for (let i = 0; i < decoded.length; i += 8) peak = Math.max(peak, Math.abs(decoded[i]));
+    const vSeat = this._resolveVisualSeat(remoteId, fromSeat);
+    this.notifyTalking(vSeat, peak > 0.06 && !this.speakerMuted, peak * 100);
+  }
+
   cleanup() {
+    this._stopRelayCapture();
     this.stopMicTest();
     if (this._vadInterval) {
       clearInterval(this._vadInterval);
@@ -728,6 +907,14 @@ export class SpatialVoiceChatEngine {
     this.localSource = null;
     this.localAnalyser = null;
     this.closeAllPeers();
+    if (this._relayPlayback) {
+      for (const state of this._relayPlayback.values()) {
+        try {
+          state.gain?.disconnect();
+        } catch {}
+      }
+      this._relayPlayback.clear();
+    }
     this.isVoiceActive = false;
     this.localMicLevel = 0;
   }
